@@ -130,14 +130,12 @@ NODE_ENV="production"
 
 Si le mot de passe contient `@`, `:`, `/`, `?` ou `#`, encodez ces caractères pour une URL. Les variables iCal peuvent rester vides, mais l’agenda ne sera alors pas connecté.
 
-Générez le client, synchronisez le schéma, contrôlez puis compilez :
+Contrôlez puis compilez :
 
 ```bash
 set -a
 source /etc/sioverse.env
 set +a
-sudo -u sioverse --preserve-env=DATABASE_URL,NODE_ENV npm run db:generate
-sudo -u sioverse --preserve-env=DATABASE_URL,NODE_ENV npm run db:push
 sudo -u sioverse npm run lint
 sudo -u sioverse npm run typecheck
 sudo -u sioverse npm test
@@ -273,14 +271,13 @@ Le workflow [`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml) s�
 Le déploiement ne démarre que si les étapes suivantes réussissent :
 
 1. installation avec `npm ci` ;
-2. génération du client Prisma ;
-3. lint, génération des types de routes Next.js et vérification TypeScript ;
-4. tests automatisés ;
-5. compilation Next.js.
+2. lint, génération des types de routes Next.js et vérification TypeScript ;
+3. tests automatisés ;
+4. compilation Next.js.
 
-Le job de production ouvre ensuite une connexion SSH avec une clé dédiée et restreinte. Le script [`deploy/deploy.sh`](./deploy/deploy.sh), installé en lecture seule dans `/usr/local/sbin/deploy-sioverse`, effectue une sauvegarde PostgreSQL, avance le clone avec un fast-forward, génère le client Prisma, compile, redémarre uniquement SIOVerse et contrôle SIOVerse ainsi que le BDE.
+Le job de production ouvre ensuite une connexion SSH avec une clé dédiée et restreinte. Le script [`deploy/deploy.sh`](./deploy/deploy.sh), installé en lecture seule dans `/usr/local/sbin/deploy-sioverse`, effectue une sauvegarde PostgreSQL, avance le clone avec un fast-forward, compile, redémarre uniquement SIOVerse et contrôle SIOVerse ainsi que le BDE.
 
-La synchronisation du schéma n’est volontairement pas automatique. La base contient aussi des tables créées directement par les modules d’authentification et communautaires, absentes du schéma Prisma. Un `prisma db push` sur la production proposerait de les supprimer. Toute évolution de schéma doit donc faire l’objet d’une migration relue, sauvegardée puis exécutée séparément.
+La synchronisation du schéma n’est volontairement pas automatique. Toute évolution de structure doit faire l’objet d’une migration SQL relue, sauvegardée puis exécutée séparément.
 
 Les secrets GitHub requis dans **Settings → Secrets and variables → Actions** sont :
 
@@ -315,7 +312,6 @@ sudo -u sioverse npm ci
 set -a
 source /etc/sioverse.env
 set +a
-sudo -u sioverse --preserve-env=DATABASE_URL,NODE_ENV npm run db:generate
 sudo -u sioverse --preserve-env=DATABASE_URL,NODE_ENV npm run build
 sudo systemctl restart sioverse
 sudo systemctl status sioverse

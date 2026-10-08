@@ -93,7 +93,7 @@ Les opérations sensibles sont également contrôlées dans les routes API : mas
 | Interface | React 19, TypeScript, CSS |
 | Serveur | Node.js 22 |
 | Base de données | PostgreSQL 18 en production |
-| Accès aux données | Prisma 7 et requêtes PostgreSQL avec `pg` |
+| Accès aux données | PostgreSQL avec `pg` et requêtes paramétrées |
 | Validation | Zod |
 | Calendriers | node-ical |
 | Icônes | Lucide React |
@@ -124,8 +124,6 @@ Lancez PostgreSQL avec la configuration de développement fournie, puis l’appl
 
 ```bash
 docker compose up -d database
-npm run db:generate
-npm run db:push
 npm run dev
 ```
 
@@ -137,7 +135,7 @@ Ouvrez [http://127.0.0.1:3000](http://127.0.0.1:3000). En développement local u
 
 | Variable | Obligatoire | Rôle |
 | --- | --- | --- |
-| `DATABASE_URL` | Oui | URL PostgreSQL utilisée par l’authentification, Prisma et les modules métier |
+| `DATABASE_URL` | Oui | URL PostgreSQL utilisée par l’authentification et les modules métier |
 | `ECOLEDIRECTE_CLASS_ICAL_URL` | Non | Flux iCal général de la classe, prioritaire |
 | `ECOLEDIRECTE_ICAL_URL` | Non | Flux iCal personnel utilisé en repli |
 
@@ -145,14 +143,9 @@ Les variables sans préfixe `NEXT_PUBLIC_` restent côté serveur. Les fichiers 
 
 ## Base de données et stockage
 
-Le projet possède deux modes de création de tables :
+Les modules d’authentification, de contenus communautaires et de catalogue ENT créent leurs tables PostgreSQL à la première utilisation avec des requêtes idempotentes. Les requêtes dynamiques utilisent des paramètres PostgreSQL et les évolutions de structure doivent passer par une migration SQL relue et sauvegardée au préalable.
 
-- le schéma Prisma décrit les entités pédagogiques principales et le catalogue ENT ;
-- les modules d’authentification et communautaires créent leurs tables PostgreSQL à la première utilisation avec des requêtes idempotentes.
-
-`npm run db:push` synchronise la partie Prisma. En production, effectuez toujours une sauvegarde avant une évolution du schéma.
-
-> N’exécutez pas `db:push` sur la base de production déjà initialisée : certaines tables applicatives sont gérées directement par le code et ne figurent pas dans le schéma Prisma. Prisma proposerait de les supprimer. Les évolutions de production doivent passer par une migration SQL ou Prisma relue et sauvegardée au préalable.
+L’ancien schéma Prisma incomplet a été retiré : il ne représentait pas les tables d’authentification et communautaires et pouvait donc proposer leur suppression lors d’un `db push`.
 
 Le dossier `storage/` n’est pas versionné :
 
@@ -184,10 +177,6 @@ Le premier administrateur est créé automatiquement uniquement en développemen
 | `npm run typecheck` | Génération des types de routes Next.js puis vérification TypeScript |
 | `npm test` | Tests automatisés |
 | `npm run format` | Formatage Prettier |
-| `npm run db:generate` | Génération du client Prisma |
-| `npm run db:push` | Synchronisation du schéma Prisma |
-| `npm run db:migrate` | Migration en développement |
-| `npm run db:studio` | Interface Prisma Studio |
 | `npm run ent:import -- '/chemin'` | Import d’un dossier pédagogique |
 
 Avant de proposer un changement :
@@ -205,13 +194,11 @@ Les tests couvrent notamment l’authentification, les calendriers, la biblioth�
 
 ```text
 SIOVerse/
-├── prisma/                 # Schéma Prisma
 ├── public/wallpapers/      # Fonds d’écran livrés avec le site
 ├── scripts/                # Import et maintenance des données
 ├── src/
 │   ├── app/                # Pages App Router et routes API
 │   ├── components/         # Interface et composants interactifs
-│   ├── generated/prisma/   # Client généré, non versionné
 │   └── lib/                # Auth, données, calendrier et logique métier
 ├── storage/                # Fichiers persistants, non versionnés
 ├── tests/                  # Tests automatisés

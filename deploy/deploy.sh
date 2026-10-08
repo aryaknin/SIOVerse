@@ -12,25 +12,22 @@ if ! flock -n 9; then
   exit 1
 fi
 
-echo "[1/7] Sauvegarde de PostgreSQL"
+echo "[1/6] Sauvegarde de PostgreSQL"
 install -d -m 0750 -o postgres -g postgres "${BACKUP_DIR}"
 backup_file="${BACKUP_DIR}/database-before-deploy-$(date -u +%Y%m%dT%H%M%SZ).dump"
 sudo -u postgres pg_dump --format=custom --file="${backup_file}" sioverse
 
-echo "[2/7] Récupération de la branche main"
+echo "[2/6] Récupération de la branche main"
 sudo -u sioverse git -C "${APP_DIR}" fetch --prune origin main
 sudo -u sioverse git -C "${APP_DIR}" merge --ff-only origin/main
 
-echo "[3/7] Installation déterministe des dépendances"
+echo "[3/6] Installation déterministe des dépendances"
 sudo -u sioverse npm --prefix "${APP_DIR}" ci
 
-echo "[4/7] Génération du client Prisma"
-sudo -u sioverse bash -c "set -a; source /etc/sioverse.env; set +a; cd '${APP_DIR}'; npm run db:generate"
-
-echo "[5/7] Compilation de production"
+echo "[4/6] Compilation de production"
 sudo -u sioverse bash -c "set -a; source /etc/sioverse.env; set +a; cd '${APP_DIR}'; npm run build"
 
-echo "[6/7] Redémarrage et contrôle de santé"
+echo "[5/6] Redémarrage et contrôle de santé"
 systemctl restart sioverse.service
 for attempt in {1..15}; do
   if curl --fail --silent --show-error --output /dev/null http://127.0.0.1:3000/connexion; then
@@ -43,7 +40,7 @@ for attempt in {1..15}; do
   sleep 2
 done
 
-echo "[7/7] Vérification de Nginx et du site BDE"
+echo "[6/6] Vérification de Nginx et du site BDE"
 nginx -t
 curl --fail --silent --show-error --output /dev/null \
   --resolve sioverse.online:443:127.0.0.1 https://sioverse.online/connexion
