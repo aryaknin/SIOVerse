@@ -32,7 +32,9 @@ export function MemesBoard({ initialMemes, initialPeople, canManage }: { initial
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("meme");
-    if (id && initialMemes.some((meme) => meme.id === id)) setSelectedId(id);
+    if (!id || !initialMemes.some((meme) => meme.id === id)) return;
+    const timer = window.setTimeout(() => setSelectedId(id), 0);
+    return () => window.clearTimeout(timer);
   }, [initialMemes]);
 
   useEffect(() => {

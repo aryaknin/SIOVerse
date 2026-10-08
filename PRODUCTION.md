@@ -2,7 +2,7 @@
 
 Ce guide décrit le déploiement de SIOVerse sur le VPS OVH associé à l’IPv4 `51.210.254.136`, avec le domaine **sioverse.online**.
 
-Configuration observée du VPS : Ubuntu 26.04, 2 vCore, 4 Go de mémoire et 40 Go de stockage. Les commandes supposent un accès SSH avec un compte autorisé à utiliser `sudo`.
+Configuration déployée : Ubuntu 26.04, Node.js 22, PostgreSQL 18, 2 vCore, 4 Go de mémoire et 40 Go de stockage. Le site est en ligne avec HTTPS, et le VPS héberge également `bde-ortmontreuil.fr` dans un service séparé.
 
 ## Architecture retenue
 
@@ -22,6 +22,15 @@ Internet
 ```
 
 Nginx termine HTTPS et joue le rôle de reverse proxy. Next.js et PostgreSQL restent accessibles uniquement depuis le VPS. systemd supervise l’application.
+
+Les deux sites partagent uniquement Nginx et la machine :
+
+| Site | Service | Port interne | Configuration Nginx |
+| --- | --- | --- | --- |
+| SIOVerse | `sioverse.service` | `127.0.0.1:3000` | `/etc/nginx/sites-available/sioverse` |
+| BDE ORT | `bde-website.service` | `127.0.0.1:8000` | `/etc/nginx/sites-available/bde-website` |
+
+Un déploiement SIOVerse ne redémarre pas le service BDE. Le contrôle de santé final vérifie néanmoins que les deux virtual hosts répondent toujours.
 
 ## 1. Préparer le DNS
 
@@ -257,7 +266,42 @@ Choisissez la redirection automatique HTTP vers HTTPS. Certbot installe le renou
 - `sudo journalctl -u sioverse --since today` ne contient pas d’erreur répétée ;
 - `df -h` montre assez d’espace libre.
 
-## 11. Mettre le site à jour
+## 11. Déploiement automatique depuis GitHub
+
+Le workflow [`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml) s’exécute à chaque `push` sur `main` et peut aussi être lancé manuellement depuis l’onglet **Actions** de GitHub.
+
+Le déploiement ne démarre que si les étapes suivantes réussissent :
+
+1. installation avec `npm ci` ;
+2. génération du client Prisma ;
+3. lint et vérification TypeScript ;
+4. tests automatisés ;
+5. compilation Next.js.
+
+Le job de production ouvre ensuite une connexion SSH avec une clé dédiée et restreinte. Le script [`deploy/deploy.sh`](./deploy/deploy.sh), installé en lecture seule dans `/usr/local/sbin/deploy-sioverse`, effectue une sauvegarde PostgreSQL, avance le clone avec un fast-forward, synchronise Prisma, compile, redémarre uniquement SIOVerse et contrôle SIOVerse ainsi que le BDE.
+
+Les secrets GitHub requis dans **Settings → Secrets and variables → Actions** sont :
+
+| Secret | Valeur attendue |
+| --- | --- |
+| `SIOVERSE_DEPLOY_HOST` | adresse du VPS, actuellement `51.210.254.136` |
+| `SIOVERSE_DEPLOY_USER` | utilisateur SSH restreint, `sioverse-deploy` |
+| `SIOVERSE_DEPLOY_KEY` | clé privée dédiée générée pour GitHub Actions |
+| `SIOVERSE_KNOWN_HOSTS` | clé d’hôte SSH vérifiée du VPS |
+
+La clé privée ne doit jamais être ajoutée au dépôt. La clé publique correspondante est limitée côté VPS à une seule commande, sans terminal, transfert de port ni agent SSH.
+
+### Déclenchement
+
+```bash
+git add .
+git commit -m "Description du changement"
+git push origin main
+```
+
+Un commit uniquement local ne peut pas déclencher GitHub Actions : le déploiement commence lorsque le commit est envoyé sur GitHub. Suivez son état dans l’onglet **Actions** du dépôt. En cas d’échec des contrôles, la production n’est pas redémarrée.
+
+## 12. Mise à jour manuelle de secours
 
 Sauvegardez d’abord la base et `storage/`, puis :
 
@@ -278,7 +322,7 @@ sudo systemctl status sioverse
 
 Ne redémarrez le service qu’après une compilation réussie. Pour une évolution à risque, préparez une copie de la base et un retour arrière avant de modifier le schéma.
 
-## 12. Sauvegardes
+## 13. Sauvegardes
 
 Une sauvegarde exploitable contient :
 
@@ -306,7 +350,7 @@ sudo -u postgres pg_restore --dbname=sioverse_restore_test /var/backups/sioverse
 sudo -u postgres dropdb sioverse_restore_test
 ```
 
-## 13. Supervision et diagnostic
+## 14. Supervision et diagnostic
 
 ```bash
 systemctl is-active sioverse nginx postgresql
@@ -326,22 +370,22 @@ sudo -u postgres psql -d sioverse -c "SELECT pg_size_pretty(pg_database_size('si
 | Fichier absent après restauration | restauration conjointe de la base et `storage/` |
 | Compilation interrompue | mémoire disponible ; swap temporaire si nécessaire |
 
-## 14. Checklist de mise en ligne
+## 15. État actuel de la mise en ligne
 
-- [ ] DNS `A` de `sioverse.online` et `www` vers `51.210.254.136`
-- [ ] accès SSH par clé testé
-- [ ] système à jour et pare-feu actif
-- [ ] PostgreSQL limité à localhost avec un secret unique
-- [ ] dépôt cloné dans `/srv/sioverse/app`
-- [ ] `/etc/sioverse.env` protégé en `0640`
-- [ ] lint, types, tests et compilation réussis
-- [ ] premier administrateur créé via tunnel SSH
-- [ ] service systemd actif au démarrage
-- [ ] Nginx configuré en reverse proxy
-- [ ] HTTPS actif et renouvellement testé
-- [ ] ports 3000 et 5432 non publics
-- [ ] sauvegarde externe automatisée et restauration testée
-- [ ] contrôle fonctionnel après redémarrage
+- [x] DNS `A` de `sioverse.online` et `www` vers `51.210.254.136`
+- [x] accès SSH par clé testé
+- [x] PostgreSQL limité à localhost avec un secret unique
+- [x] dépôt cloné dans `/srv/sioverse/app`
+- [x] `/etc/sioverse.env` protégé en `0640`
+- [x] premier administrateur créé
+- [x] service systemd actif au démarrage
+- [x] Nginx configuré sans modifier le virtual host du BDE
+- [x] HTTPS actif et renouvellement simulé avec succès
+- [x] ports applicatifs accessibles uniquement en local
+- [x] contrôle fonctionnel de SIOVerse et du BDE après mise en ligne
+- [ ] secrets GitHub Actions enregistrés
+- [ ] premier déploiement automatisé validé
+- [ ] sauvegarde externe quotidienne et restauration régulièrement testée
 
 ## Données sensibles
 

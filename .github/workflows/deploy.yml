@@ -1,0 +1,76 @@
+name: Qualité et déploiement
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: sioverse-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Vérifications
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://sioverse:sioverse@127.0.0.1:5432/sioverse
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Générer le client Prisma
+        run: npm run db:generate
+
+      - name: Analyser le code
+        run: npm run lint
+
+      - name: Vérifier les types
+        run: npm run typecheck
+
+      - name: Exécuter les tests
+        run: npm test
+
+      - name: Compiler l’application
+        run: npm run build
+
+  deploy:
+    name: Déployer sur le VPS OVH
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Préparer la connexion SSH restreinte
+        env:
+          DEPLOY_KEY: ${{ secrets.SIOVERSE_DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SIOVERSE_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/sioverse_deploy
+          chmod 600 ~/.ssh/sioverse_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Lancer le déploiement
+        env:
+          DEPLOY_HOST: ${{ secrets.SIOVERSE_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.SIOVERSE_DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/sioverse_deploy \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST"

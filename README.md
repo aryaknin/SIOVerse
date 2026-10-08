@@ -92,7 +92,7 @@ Les opérations sensibles sont également contrôlées dans les routes API : mas
 | Framework | Next.js 16, App Router |
 | Interface | React 19, TypeScript, CSS |
 | Serveur | Node.js 22 |
-| Base de données | PostgreSQL 17 |
+| Base de données | PostgreSQL 18 en production |
 | Accès aux données | Prisma 7 et requêtes PostgreSQL avec `pg` |
 | Validation | Zod |
 | Calendriers | node-ical |
@@ -237,6 +237,10 @@ Les ressources partagées peuvent contenir des données personnelles ou protég�
 ## Production et déploiement
 
 La procédure pour le VPS OVH, Nginx, HTTPS, PostgreSQL, systemd, le DNS de `sioverse.online`, les sauvegardes et les mises à jour est détaillée dans **[PRODUCTION.md](./PRODUCTION.md)**.
+
+Le site est actuellement hébergé sur le VPS OVH `51.210.254.136`, derrière Nginx et un certificat Let’s Encrypt. Le même VPS héberge `bde-ortmontreuil.fr` dans un service et un virtual host séparés.
+
+Chaque `push` sur `main` déclenche le workflow GitHub Actions **Qualité et déploiement** : lint, vérification TypeScript, tests, compilation, puis déploiement sur le VPS uniquement si toutes les vérifications réussissent. La connexion utilise une clé dédiée limitée au script de déploiement ; aucun secret applicatif n’est conservé dans GitHub.
 
 ## État du projet
 
