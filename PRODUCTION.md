@@ -384,8 +384,8 @@ sudo -u postgres psql -d sioverse -c "SELECT pg_size_pretty(pg_database_size('si
 - [x] HTTPS actif et renouvellement simulé avec succès
 - [x] ports applicatifs accessibles uniquement en local
 - [x] contrôle fonctionnel de SIOVerse et du BDE après mise en ligne
-- [ ] secrets GitHub Actions enregistrés
-- [ ] premier déploiement automatisé validé
+- [x] secrets GitHub Actions enregistrés
+- [x] premier déploiement automatisé validé
 - [ ] sauvegarde externe quotidienne et restauration régulièrement testée
 
 ## Données sensibles
