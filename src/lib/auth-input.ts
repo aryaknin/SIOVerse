@@ -13,5 +13,14 @@ export const loginSchema = z.object({ identifier: z.string().trim().min(3).max(2
 
 export function sameOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
-  return !origin || origin === new URL(request.url).origin;
+  if (!origin) return true;
+
+  const url = new URL(request.url);
+  const host = request.headers.get("host");
+  if (!host) return origin === url.origin;
+
+  const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",", 1)[0]?.trim().toLowerCase();
+  const protocol = forwardedProtocol === "http" || forwardedProtocol === "https" ? forwardedProtocol : url.protocol.slice(0, -1);
+
+  return origin === `${protocol}://${host}`;
 }
