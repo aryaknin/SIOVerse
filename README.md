@@ -179,7 +179,7 @@ Le premier administrateur est créé automatiquement uniquement en développemen
 | `npm run build` | Compilation Next.js de production |
 | `npm run start` | Serveur de production sur `127.0.0.1:3000` |
 | `npm run lint` | Analyse ESLint |
-| `npm run typecheck` | Vérification TypeScript |
+| `npm run typecheck` | Génération des types de routes Next.js puis vérification TypeScript |
 | `npm test` | Tests automatisés |
 | `npm run format` | Formatage Prettier |
 | `npm run db:generate` | Génération du client Prisma |

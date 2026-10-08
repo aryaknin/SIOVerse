@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start -H 127.0.0.1",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "node --conditions=react-server --import tsx --test tests/*.test.mjs",
     "format": "prettier --write .",
     "db:generate": "prisma generate",

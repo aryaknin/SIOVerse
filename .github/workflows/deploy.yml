@@ -21,10 +21,10 @@ jobs:
       DATABASE_URL: postgresql://sioverse:sioverse@127.0.0.1:5432/sioverse
     steps:
       - name: Récupérer le code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Installer Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm

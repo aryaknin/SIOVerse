@@ -274,7 +274,7 @@ Le déploiement ne démarre que si les étapes suivantes réussissent :
 
 1. installation avec `npm ci` ;
 2. génération du client Prisma ;
-3. lint et vérification TypeScript ;
+3. lint, génération des types de routes Next.js et vérification TypeScript ;
 4. tests automatisés ;
 5. compilation Next.js.
 
