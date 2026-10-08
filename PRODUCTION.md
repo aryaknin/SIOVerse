@@ -278,7 +278,9 @@ Le déploiement ne démarre que si les étapes suivantes réussissent :
 4. tests automatisés ;
 5. compilation Next.js.
 
-Le job de production ouvre ensuite une connexion SSH avec une clé dédiée et restreinte. Le script [`deploy/deploy.sh`](./deploy/deploy.sh), installé en lecture seule dans `/usr/local/sbin/deploy-sioverse`, effectue une sauvegarde PostgreSQL, avance le clone avec un fast-forward, synchronise Prisma, compile, redémarre uniquement SIOVerse et contrôle SIOVerse ainsi que le BDE.
+Le job de production ouvre ensuite une connexion SSH avec une clé dédiée et restreinte. Le script [`deploy/deploy.sh`](./deploy/deploy.sh), installé en lecture seule dans `/usr/local/sbin/deploy-sioverse`, effectue une sauvegarde PostgreSQL, avance le clone avec un fast-forward, génère le client Prisma, compile, redémarre uniquement SIOVerse et contrôle SIOVerse ainsi que le BDE.
+
+La synchronisation du schéma n’est volontairement pas automatique. La base contient aussi des tables créées directement par les modules d’authentification et communautaires, absentes du schéma Prisma. Un `prisma db push` sur la production proposerait de les supprimer. Toute évolution de schéma doit donc faire l’objet d’une migration relue, sauvegardée puis exécutée séparément.
 
 Les secrets GitHub requis dans **Settings → Secrets and variables → Actions** sont :
 
@@ -314,7 +316,6 @@ set -a
 source /etc/sioverse.env
 set +a
 sudo -u sioverse --preserve-env=DATABASE_URL,NODE_ENV npm run db:generate
-sudo -u sioverse --preserve-env=DATABASE_URL,NODE_ENV npm run db:push
 sudo -u sioverse --preserve-env=DATABASE_URL,NODE_ENV npm run build
 sudo systemctl restart sioverse
 sudo systemctl status sioverse

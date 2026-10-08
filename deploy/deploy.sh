@@ -24,8 +24,8 @@ sudo -u sioverse git -C "${APP_DIR}" merge --ff-only origin/main
 echo "[3/7] Installation déterministe des dépendances"
 sudo -u sioverse npm --prefix "${APP_DIR}" ci
 
-echo "[4/7] Génération Prisma et synchronisation du schéma"
-sudo -u sioverse bash -c "set -a; source /etc/sioverse.env; set +a; cd '${APP_DIR}'; npm run db:generate; npm run db:push"
+echo "[4/7] Génération du client Prisma"
+sudo -u sioverse bash -c "set -a; source /etc/sioverse.env; set +a; cd '${APP_DIR}'; npm run db:generate"
 
 echo "[5/7] Compilation de production"
 sudo -u sioverse bash -c "set -a; source /etc/sioverse.env; set +a; cd '${APP_DIR}'; npm run build"

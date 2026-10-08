@@ -152,6 +152,8 @@ Le projet possède deux modes de création de tables :
 
 `npm run db:push` synchronise la partie Prisma. En production, effectuez toujours une sauvegarde avant une évolution du schéma.
 
+> N’exécutez pas `db:push` sur la base de production déjà initialisée : certaines tables applicatives sont gérées directement par le code et ne figurent pas dans le schéma Prisma. Prisma proposerait de les supprimer. Les évolutions de production doivent passer par une migration SQL ou Prisma relue et sauvegardée au préalable.
+
 Le dossier `storage/` n’est pas versionné :
 
 - `storage/ent/files/` contient les documents importés ;
