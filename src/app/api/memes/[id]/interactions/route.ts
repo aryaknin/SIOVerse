@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { sameOrigin } from "@/lib/auth-input";
-import { addMemeComment, deleteMemeComment, memeDetail, setMemeReaction } from "@/lib/memes";
+import { addMemeComment, deleteMemeComment, memeCommentAudience, memeDetail, setMemeReaction } from "@/lib/memes";
+import { publishNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,8 @@ export async function POST(request: Request, route: Context) {
     const parsed = commentSchema.safeParse(await request.json());
     if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message ?? "Commentaire invalide." }, { status: 400 });
     await addMemeComment(access.id!, access.user!.id, access.user!.username, parsed.data.body);
+    const audience = await memeCommentAudience(access.id!, access.user!.id);
+    if (audience.userIds.length) await publishNotification({ category: "MEMES", title: "Nouveau commentaire", body: `${access.user!.username} a commenté « ${audience.title} ».`, href: "/sioverse/memes", audience: audience.userIds });
     return Response.json(await memeDetail(access.id!, access.user!.id), { status: 201, headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return failure(error); }
 }

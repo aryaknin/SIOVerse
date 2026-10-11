@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { sameOrigin } from "@/lib/auth-input";
 import { importEntFiles } from "@/lib/ent-store";
+import { publishNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 
@@ -9,7 +10,8 @@ const fields = z.object({ subjectId: z.uuid(), parentId: z.union([z.uuid(), z.li
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return Response.json({ error: "Origine de requête refusée." }, { status: 403 });
-  if ((await getCurrentUser())?.role !== "ADMIN") return Response.json({ error: "Accès administrateur requis." }, { status: 403 });
+  const actor = await getCurrentUser();
+  if (actor?.role !== "ADMIN") return Response.json({ error: "Accès administrateur requis." }, { status: 403 });
   let form: FormData;
   try { form = await request.formData(); } catch { return Response.json({ error: "Envoi invalide." }, { status: 400 }); }
   const parsed = fields.safeParse({ subjectId: form.get("subjectId"), parentId: form.get("parentId") ?? "" });
@@ -25,6 +27,7 @@ export async function POST(request: Request) {
   try {
     const original = await Promise.all(source.map(async (file, index) => ({ relativePath: paths[index] as string, content: Buffer.from(await file.arrayBuffer()) })));
     const result = await importEntFiles({ subjectId: parsed.data.subjectId, parentId: parsed.data.parentId || null, files: original });
+    if (result.imported) await publishNotification({ category: "RESOURCES", title: "Nouvelles ressources", body: `${actor.username} a importé ${result.imported} document${result.imported > 1 ? "s" : ""}.`, href: "/ressources", excludeUserId: actor.id });
     return Response.json(result, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Import impossible." }, { status: 400 });

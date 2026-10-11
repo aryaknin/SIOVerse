@@ -10,7 +10,7 @@ test("archives intactes, renommage, déplacement et suppression des ressources",
   process.env.SIOVERSE_ENT_STAGE_ONLY = "1";
   process.chdir(directory);
   try {
-    const { addSubject, addChapter, importEntFiles, moveEntItem, renameEntItem, deleteEntItem, readEntCatalog } = await import("../src/lib/ent-store.ts");
+    const { addSubject, addChapter, importEntFiles, moveEntItem, moveEntResources, renameEntItem, deleteEntItem, deleteEntResources, createEntResourcesBundle, readEntCatalog } = await import("../src/lib/ent-store.ts");
     const first = (await addSubject({ name: "Java", teacher: "M. BUFFETEAU" })).subjects[0];
     const second = (await addSubject({ name: "BDD", teacher: "Mme. BENYATTOU" })).subjects[1];
     const source = (await addChapter({ subjectId: first.id, title: "TP" })).chapters.at(-1);
@@ -38,6 +38,20 @@ test("archives intactes, renommage, déplacement et suppression des ressources",
     assert.equal(catalog.resources.length, 0);
     assert.ok(catalog.deleted.resources.includes(imported.catalog.resources[0].id));
     assert.deepEqual(await readFile(path.join(directory, "storage/ent/trash", imported.catalog.resources[0].storedName)), archive);
+    const batch = await importEntFiles({ subjectId: second.id, parentId: source.id, files: [
+      { relativePath: "notes.txt", content: Buffer.from("Notes de cours") },
+      { relativePath: "requete.sql", content: Buffer.from("SELECT 1;") },
+    ] });
+    const batchIds = batch.catalog.resources.map((item) => item.id);
+    await moveEntResources({ ids: batchIds, subjectId: second.id, parentId: destination.id });
+    catalog = await readEntCatalog();
+    assert.ok(catalog.resources.every((item) => item.chapterId === destination.id));
+    const bundle = await createEntResourcesBundle(batchIds);
+    assert.equal(bundle.readUInt32LE(0), 0x04034b50);
+    assert.match(bundle.toString("utf8"), /notes\.txt/);
+    assert.match(bundle.toString("utf8"), /requete\.sql/);
+    await deleteEntResources(batchIds);
+    assert.equal((await readEntCatalog()).resources.length, 0);
     await deleteEntItem({ kind: "chapter", id: source.id });
     catalog = await readEntCatalog();
     assert.ok(!catalog.chapters.some((item) => item.id === source.id || item.id === child.id));

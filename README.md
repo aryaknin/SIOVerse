@@ -29,6 +29,7 @@ Le point d’entrée principal prend la forme d’un bureau numérique responsiv
 - bureau, fenêtres, menu Démarrer et barre des tâches ;
 - fonds d’écran animés fournis par le site ou ajoutés par l’utilisateur ;
 - aperçu du cours actuel et du prochain cours ;
+- centre de notifications personnel avec compteur, état lu/non lu et réglages par catégorie ;
 - accès centralisé aux applications du site.
 
 ### Agenda
@@ -51,6 +52,8 @@ La bibliothèque ENT organise les documents par matière et par dossier :
 - import de dossiers et d’archives ZIP, TAR, TAR.GZ et TGZ ;
 - prise en charge des PDF, documents Office, images, fichiers texte, code source et liens ;
 - recherche, favoris, historique et aperçu dans le navigateur ;
+- sélection multiple avec déplacement, suppression et téléchargement ZIP en lot ;
+- indication des ressources ajoutées depuis la dernière visite ;
 - renommage, déplacement et suppression par les administrateurs ;
 - conservation des fichiers supprimés dans une corbeille locale ;
 - copie locale du catalogue si PostgreSQL devient momentanément indisponible.

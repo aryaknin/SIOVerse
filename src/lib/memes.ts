@@ -96,6 +96,19 @@ export async function addMemeComment(id: string, userId: string, authorName: str
   await loreDatabase().query("INSERT INTO sio_meme_comments(id,meme_id,user_id,author_name,body) VALUES($1,$2,$3,$4,$5)", [randomUUID(), id, userId, authorName, body]);
 }
 
+export async function memeCommentAudience(id: string, actorId: string): Promise<{ title: string; userIds: string[] }> {
+  await ensureMemesSchema();
+  const [meme, recipients] = await Promise.all([
+    loreDatabase().query("SELECT title FROM sio_lore_entries WHERE id=$1 AND kind='GIF'", [id]),
+    loreDatabase().query(`SELECT DISTINCT user_id FROM (
+      SELECT author_id AS user_id FROM sio_lore_entries WHERE id=$1
+      UNION SELECT user_id FROM sio_meme_comments WHERE meme_id=$1
+      UNION SELECT user_id FROM sio_meme_people WHERE meme_id=$1
+    ) audience WHERE user_id IS NOT NULL AND user_id<>$2`, [id, actorId]),
+  ]);
+  return { title: meme.rows[0]?.title ?? "un mème", userIds: recipients.rows.map((row) => row.user_id) };
+}
+
 export async function deleteMemeComment(id: string, commentId: string, userId: string, isAdmin: boolean): Promise<void> {
   await ensureMemesSchema();
   const result = await loreDatabase().query("DELETE FROM sio_meme_comments WHERE id=$1 AND meme_id=$2 AND (user_id=$3 OR $4::boolean) RETURNING id", [commentId, id, userId, isAdmin]);

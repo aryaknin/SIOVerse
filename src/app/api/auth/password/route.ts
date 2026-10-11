@@ -1,5 +1,6 @@
 import { createSession, getCurrentUser, updatePassword } from "@/lib/auth";
 import { passwordSchema, sameOrigin } from "@/lib/auth-input";
+import { publishNotification } from "@/lib/notifications";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -15,6 +16,7 @@ export async function POST(request: Request) {
   try {
     await updatePassword(user.id, parsed.data.newPassword, parsed.data.currentPassword);
     await createSession(user.id);
+    await publishNotification({ category: "ACCOUNTS", title: "Mot de passe modifié", body: "Le mot de passe de ton compte vient d’être modifié.", audience: [user.id] });
     return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Modification impossible." }, { status: 400 });

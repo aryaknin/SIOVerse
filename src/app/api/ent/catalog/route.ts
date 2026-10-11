@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { sameOrigin } from "@/lib/auth-input";
 import { addAssessment, addChapter, addLink, addSubject, deleteEntItem, moveEntItem, readEntCatalog, renameEntItem } from "@/lib/ent-store";
+import { publishNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 
@@ -55,7 +56,8 @@ export async function DELETE(request: Request) {
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return Response.json({ error: "Origine de requête refusée." }, { status: 403 });
-  if ((await getCurrentUser())?.role !== "ADMIN") return Response.json({ error: "Accès administrateur requis." }, { status: 403 });
+  const actor = await getCurrentUser();
+  if (actor?.role !== "ADMIN") return Response.json({ error: "Accès administrateur requis." }, { status: 403 });
   let data: unknown;
   try { data = await request.json(); } catch { return Response.json({ error: "Requête invalide." }, { status: 400 }); }
   const parsed = inputSchema.safeParse(data);
@@ -67,6 +69,8 @@ export async function POST(request: Request) {
       : input.action === "chapter" ? await addChapter(input)
         : input.action === "link" ? await addLink(input)
           : await addAssessment(input);
+    if (input.action === "assessment") await publishNotification({ category: "ASSESSMENTS", title: "Nouvelle échéance", body: `${actor.username} a ajouté « ${input.title} ».`, href: "/controles", excludeUserId: actor.id });
+    else if (input.action === "link" || input.action === "chapter") await publishNotification({ category: "RESOURCES", title: input.action === "link" ? "Nouvelle ressource" : "Nouveau dossier de cours", body: `${actor.username} a ajouté « ${input.action === "link" ? input.title : input.title} ».`, href: "/ressources", excludeUserId: actor.id });
     return Response.json(catalog, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Enregistrement impossible." }, { status: 400 });

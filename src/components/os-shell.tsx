@@ -25,6 +25,7 @@ import {
 import { apps, type AppSlug } from "@/lib/apps";
 import type { SessionUser } from "@/lib/auth";
 import { CourseGlance } from "./course-glance";
+import { NotificationCenter } from "./notification-center";
 import { StatusClock } from "./status-clock";
 
 const wallpapers = [
@@ -207,7 +208,7 @@ export function OsShell({ children, active, user, desktopCourses = [] }: { child
 
       <nav className="taskbar" aria-label="Barre des tâches">
         <div className="taskbar-left"><button className={`start-button ${startOpen ? "pressed" : ""}`} onClick={() => { setStartOpen((value) => !value); setSettingsOpen(false); }} aria-label="Ouvrir le menu Démarrer" aria-expanded={startOpen}><Grid2X2 size={22} fill="currentColor" strokeWidth={1} /></button><span className="taskbar-divider" />{visibleApps.map((app) => <Link key={app.slug} href={`/${app.slug}`} className={`taskbar-app ${active === app.slug ? "active" : ""}`} aria-label={app.label} title={app.label}><app.icon size={22} /></Link>)}</div>
-        <div className="taskbar-right"><button className="taskbar-wallpaper" onClick={() => { setSettingsOpen((value) => !value); setStartOpen(false); }} aria-label="Changer le fond d’écran" aria-expanded={settingsOpen}><Monitor size={17} /><span>Fond d’écran</span></button><span className="taskbar-divider" /><Wifi size={17} /><BatteryFull size={18} /><StatusClock /></div>
+        <div className="taskbar-right"><button className="taskbar-wallpaper" onClick={() => { setSettingsOpen((value) => !value); setStartOpen(false); }} aria-label="Changer le fond d’écran" aria-expanded={settingsOpen}><Monitor size={17} /><span>Fond d’écran</span></button><NotificationCenter /><span className="taskbar-divider" /><Wifi size={17} /><BatteryFull size={18} /><StatusClock /></div>
       </nav>
     </main>
   );

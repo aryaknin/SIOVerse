@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { sameOrigin } from "@/lib/auth-input";
 import { addDocument } from "@/lib/ent-store";
 import { entMimeTypes, fileExtension } from "@/lib/ent-file-types";
+import { publishNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,8 @@ const fields = z.object({
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return Response.json({ error: "Origine de requête refusée." }, { status: 403 });
-  if ((await getCurrentUser())?.role !== "ADMIN") return Response.json({ error: "Accès administrateur requis." }, { status: 403 });
+  const actor = await getCurrentUser();
+  if (actor?.role !== "ADMIN") return Response.json({ error: "Accès administrateur requis." }, { status: 403 });
   let form: FormData;
   try { form = await request.formData(); } catch { return Response.json({ error: "Envoi invalide." }, { status: 400 }); }
   const file = form.get("file");
@@ -28,6 +30,7 @@ export async function POST(request: Request) {
 
   try {
     const catalog = await addDocument({ ...parsed.data, file, extension, mimeType: entMimeTypes[extension] });
+    await publishNotification({ category: "RESOURCES", title: "Nouveau document", body: `${actor.username} a ajouté « ${parsed.data.title} ».`, href: "/ressources", excludeUserId: actor.id });
     return Response.json(catalog, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Document non enregistré." }, { status: 400 });

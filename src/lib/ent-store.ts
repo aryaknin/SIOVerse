@@ -4,9 +4,10 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { AssessmentKind, EntAssessment, EntCatalog, EntChapter, EntResource, EntSubject, ResourceKind } from "./ent";
-import { descendantChapterIds } from "./ent";
+import { chapterPath, descendantChapterIds } from "./ent";
 import { entMimeTypes, fileExtension, isArchive, resourceKindForFile, validFileContent } from "./ent-file-types";
 import { isDatabaseUnavailable, readPostgresCatalog, savePostgresCatalog } from "./ent-postgres";
+import { createZip } from "./zip";
 
 const root = path.join(process.cwd(), "storage", "ent");
 const documentRoot = path.join(root, "files");
@@ -186,6 +187,21 @@ export async function moveEntItem(input: { kind: "chapter" | "resource"; id: str
   });
 }
 
+export async function moveEntResources(input: { ids: string[]; subjectId: string; parentId: string }): Promise<EntCatalog> {
+  return serial(async () => {
+    const catalog = await readEntCatalog();
+    const ids = new Set(input.ids);
+    if (ids.size !== input.ids.length || !ids.size || ids.size > 100) throw new Error("Sélection de ressources invalide.");
+    const parent = catalog.chapters.find((item) => item.id === input.parentId && item.subjectId === input.subjectId);
+    if (!parent) throw new Error("Dossier de destination introuvable.");
+    const resources = catalog.resources.filter((item) => ids.has(item.id));
+    if (resources.length !== ids.size) throw new Error("Une ressource sélectionnée n’existe plus.");
+    for (const resource of resources) resource.chapterId = parent.id;
+    await writeEntCatalog(catalog);
+    return catalog;
+  });
+}
+
 export async function deleteEntItem(input: { kind: CatalogItemKind; id: string }): Promise<EntCatalog> {
   return serial(async () => {
     const catalog = await readEntCatalog();
@@ -214,6 +230,63 @@ export async function deleteEntItem(input: { kind: CatalogItemKind; id: string }
     }
     return catalog;
   });
+}
+
+export async function deleteEntResources(idsInput: string[]): Promise<EntCatalog> {
+  return serial(async () => {
+    const catalog = await readEntCatalog();
+    const ids = new Set(idsInput);
+    if (ids.size !== idsInput.length || !ids.size || ids.size > 100) throw new Error("Sélection de ressources invalide.");
+    const resources = catalog.resources.filter((item) => ids.has(item.id));
+    if (resources.length !== ids.size) throw new Error("Une ressource sélectionnée n’existe plus.");
+    catalog.resources = catalog.resources.filter((item) => !ids.has(item.id));
+    catalog.deleted ??= { subjects: [], chapters: [], resources: [], assessments: [] };
+    catalog.deleted.resources.push(...ids);
+    await writeEntCatalog(catalog);
+    if (resources.some((item) => item.storedName)) {
+      await mkdir(trashRoot, { recursive: true });
+      for (const resource of resources) if (resource.storedName && new RegExp(`^${resource.id}\\.[a-z0-9]+$`).test(resource.storedName)) {
+        await rename(path.join(documentRoot, resource.storedName), path.join(trashRoot, resource.storedName)).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
+      }
+    }
+    return catalog;
+  });
+}
+
+function safeBundleSegment(value: string): string {
+  const cleaned = Array.from(value, (character) => character.charCodeAt(0) < 32 || "\\/:*?\"<>|".includes(character) ? "-" : character).join("");
+  return cleaned.replace(/\s+/g, " ").trim().slice(0, 100) || "Sans nom";
+}
+
+export async function createEntResourcesBundle(idsInput: string[]): Promise<Buffer> {
+  const ids = new Set(idsInput);
+  if (ids.size !== idsInput.length || !ids.size || ids.size > 100) throw new Error("Sélection de ressources invalide.");
+  const catalog = await readEntCatalog();
+  const resources = catalog.resources.filter((item) => ids.has(item.id));
+  if (resources.length !== ids.size) throw new Error("Une ressource sélectionnée n’existe plus.");
+  if (resources.reduce((total, item) => total + (item.sizeBytes ?? 0), 0) > 250 * 1024 * 1024) throw new Error("Le téléchargement groupé dépasse 250 Mo.");
+  const used = new Set<string>();
+  const entries: Array<{ name: string; content: Buffer }> = [];
+  for (const resource of resources) {
+    const chapter = catalog.chapters.find((item) => item.id === resource.chapterId);
+    const subject = catalog.subjects.find((item) => item.id === chapter?.subjectId);
+    const folders = chapter ? chapterPath(catalog.chapters, chapter.id).map(safeBundleSegment) : ["Sans dossier"];
+    const original = resource.originalName ? safeBundleSegment(resource.originalName) : `${safeBundleSegment(resource.title)}.url`;
+    const prefix = `${safeBundleSegment(subject?.name ?? "Sans matière")}/${folders.join("/")}/`;
+    let name = prefix + original;
+    let copy = 2;
+    while (used.has(name.toLocaleLowerCase("fr"))) {
+      const dot = original.lastIndexOf(".");
+      const base = dot > 0 ? original.slice(0, dot) : original;
+      const extension = dot > 0 ? original.slice(dot) : "";
+      name = `${prefix}${base} (${copy++})${extension}`;
+    }
+    used.add(name.toLocaleLowerCase("fr"));
+    if (resource.externalUrl) entries.push({ name, content: Buffer.from(`[InternetShortcut]\r\nURL=${resource.externalUrl}\r\n`, "utf8") });
+    else if (resource.storedName && new RegExp(`^${resource.id}\\.[a-z0-9]+$`).test(resource.storedName)) entries.push({ name, content: await readFile(path.join(documentRoot, resource.storedName)) });
+  }
+  if (!entries.length) throw new Error("Aucun fichier téléchargeable dans cette sélection.");
+  return createZip(entries);
 }
 
 export async function addChapter(input: { subjectId: string; parentId?: string | null; title: string }): Promise<EntCatalog> {
