@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { SioCursor } from "@/components/sio-cursor";
 import { PwaRegistration } from "@/components/pwa-registration";
 import "./globals.css";
+import "./undercover.css";
 
 export const metadata: Metadata = {
   title: { default: "SIO OS", template: "%s — SIO OS" },

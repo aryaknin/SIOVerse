@@ -26,19 +26,19 @@ Cette liste fixe l’ordre des prochains développements. Après chaque lot, le 
 
 ## Expérience « vrai OS »
 
-- [ ] Fenêtres déplaçables et redimensionnables.
-- [ ] Plusieurs fenêtres ouvertes simultanément.
-- [ ] Réduction réelle dans la barre des tâches.
-- [ ] Menu contextuel au clic droit.
-- [ ] Notifications système.
-- [ ] Personnalisation des icônes, thèmes, couleurs et sons.
-- [ ] Écran de verrouillage et changement de session.
-- [ ] Installation en PWA sur ordinateur et téléphone.
-- [ ] Sauvegarde des préférences du bureau par compte.
+- [x] Fenêtres déplaçables et redimensionnables.
+- [x] Plusieurs fenêtres ouvertes simultanément.
+- [x] Réduction réelle dans la barre des tâches.
+- [x] Menu contextuel au clic droit.
+- [x] Notifications système.
+- [x] Personnalisation des icônes, thèmes, couleurs et sons.
+- [x] Écran de verrouillage et changement de session.
+- [x] Installation en PWA sur ordinateur et téléphone.
+- [x] Sauvegarde des préférences du bureau par compte.
 
 ## Nouveaux univers
 
-- [ ] Undercover : salons, rôles secrets, tours, votes et historique.
+- [x] Undercover : salons, rôles secrets, tours, votes, historique et dictionnaires administrables.
 - [ ] MakeItSIO : défis, équipes, dépôts, votes et podiums.
 
 ## Administration et solidité

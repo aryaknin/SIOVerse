@@ -8,6 +8,7 @@ import { WeeklyTimetable } from "@/components/weekly-timetable";
 import { readEntCatalog } from "@/lib/ent-store";
 import { listUsers, requireUser } from "@/lib/auth";
 import { getSchoolCalendar, parisDateKey, type SchoolCalendar } from "@/lib/school-calendar";
+import type { SourcedSchoolCalendar } from "@/lib/calendar-parser";
 
 const appNames = ["agenda", "ressources", "controles", "utilisateurs"] as const;
 type AppName = (typeof appNames)[number];
@@ -19,8 +20,7 @@ const emptyMessages: Record<Exclude<SchoolCalendar["status"], "ready">, { title:
   error: { title: "Agenda indisponible", detail: "La synchronisation n’a pas abouti. Réessayez dans quelques instants." },
 };
 
-async function Agenda() {
-  const [calendar, catalog] = await Promise.all([getSchoolCalendar(), readEntCatalog()]);
+function Agenda({ calendar, catalog }: { calendar: SourcedSchoolCalendar; catalog: Awaited<ReturnType<typeof readEntCatalog>> }) {
   const todayKey = parisDateKey(new Date());
   const sourceLabel = calendar.source === "class" ? "EDT de la classe" : calendar.source === "personal" ? "EDT personnel" : "ÉcoleDirecte";
   const sourceNote = calendar.source === "personal" && calendar.classStatus === "empty-feed"
@@ -44,11 +44,22 @@ export default async function AppPage({ params }: { params: Promise<{ app: strin
   const { app } = await params;
   if (!appNames.includes(app as AppName)) notFound();
   const user = await requireUser();
-  if (app === "utilisateurs") {
-    if (user.role !== "ADMIN") redirect("/");
-    return <OsShell active="utilisateurs" user={user}><UserManagement initialUsers={await listUsers()} currentUserId={user.id} /></OsShell>;
-  }
-  if (app === "agenda") return <OsShell active="agenda" user={user}><Agenda /></OsShell>;
-  const catalog = await readEntCatalog();
-  return <OsShell active={app as AppName} user={user}>{app === "ressources" ? <ResourceExplorer initialCatalog={catalog} canManage={user.role === "ADMIN"} userId={user.id} /> : <AssessmentPlanner initialCatalog={catalog} canManage={user.role === "ADMIN"} userId={user.id} />}</OsShell>;
+  if (app === "utilisateurs" && user.role !== "ADMIN") redirect("/");
+
+  const [catalog, calendar, users] = await Promise.all([
+    readEntCatalog(),
+    getSchoolCalendar(),
+    user.role === "ADMIN" ? listUsers() : Promise.resolve([]),
+  ]);
+
+  return <OsShell
+    active={app as AppName}
+    user={user}
+    appWindows={{
+      agenda: <Agenda calendar={calendar} catalog={catalog} />,
+      ressources: <ResourceExplorer initialCatalog={catalog} canManage={user.role === "ADMIN"} userId={user.id} />,
+      controles: <AssessmentPlanner initialCatalog={catalog} canManage={user.role === "ADMIN"} userId={user.id} />,
+      ...(user.role === "ADMIN" ? { utilisateurs: <UserManagement initialUsers={users} currentUserId={user.id} /> } : {}),
+    }}
+  />;
 }
