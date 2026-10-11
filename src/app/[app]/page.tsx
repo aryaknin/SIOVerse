@@ -20,7 +20,7 @@ const emptyMessages: Record<Exclude<SchoolCalendar["status"], "ready">, { title:
 };
 
 async function Agenda() {
-  const calendar = await getSchoolCalendar();
+  const [calendar, catalog] = await Promise.all([getSchoolCalendar(), readEntCatalog()]);
   const todayKey = parisDateKey(new Date());
   const sourceLabel = calendar.source === "class" ? "EDT de la classe" : calendar.source === "personal" ? "EDT personnel" : "ÉcoleDirecte";
   const sourceNote = calendar.source === "personal" && calendar.classStatus === "empty-feed"
@@ -35,7 +35,7 @@ async function Agenda() {
 
   return <div className="os-app-page agenda-page">
     <header className="app-heading agenda-heading"><div><span className="app-eyebrow"><CalendarDays size={16} /> ÉCOLEDIRECTE</span><h2>Emploi du temps<span>.</span></h2><p>Votre semaine, en un coup d’œil.</p></div><span className="agenda-source"><span />{sourceLabel}</span></header>
-    {calendar.status === "ready" ? <WeeklyTimetable events={calendar.events} today={todayKey} /> : <div className="app-panel agenda-empty"><span><CalendarX2 size={29} /></span><h3>{emptyMessages[calendar.status].title}</h3><p>{emptyMessages[calendar.status].detail}</p></div>}
+    {calendar.status === "ready" ? <WeeklyTimetable events={calendar.events} today={todayKey} catalog={catalog} /> : <div className="app-panel agenda-empty"><span><CalendarX2 size={29} /></span><h3>{emptyMessages[calendar.status].title}</h3><p>{emptyMessages[calendar.status].detail}</p></div>}
     <div className="app-info-note agenda-source-note"><CalendarDays size={16} /><span>{sourceNote} Horaires de Paris.</span></div>
   </div>;
 }

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, BookOpen, CheckCheck, ClipboardCheck, MessageCircle, Settings2, ShieldCheck, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Bell, BellRing, BookOpen, CheckCheck, ClipboardCheck, MessageCircle, Settings2, ShieldCheck, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { NotificationCategory, NotificationPreferences, SioNotification } from "@/lib/notifications";
 
 const defaults: NotificationPreferences = { resources: true, assessments: true, accounts: true, memes: true };
@@ -37,13 +37,21 @@ export function NotificationCenter() {
   const [unread, setUnread] = useState(0);
   const [preferences, setPreferences] = useState(defaults);
   const [error, setError] = useState("");
+  const [systemPermission, setSystemPermission] = useState<NotificationPermission | "unsupported">(() => typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported");
+  const knownIds = useRef<Set<string>>(new Set());
+  const initialized = useRef(false);
 
   const load = useCallback(async () => {
     try {
       const response = await fetch("/api/notifications", { cache: "no-store" });
       if (!response.ok) return;
       const result = await response.json();
-      setItems(result.notifications as SioNotification[]); setUnread(result.unread as number); setPreferences(result.preferences as NotificationPreferences);
+      const incoming = result.notifications as SioNotification[];
+      if (initialized.current && "Notification" in window && Notification.permission === "granted") {
+        incoming.filter((item) => !item.read && !knownIds.current.has(item.id)).slice(0, 3).forEach((item) => new Notification(item.title, { body: item.body, icon: "/icon.svg", tag: item.id }));
+      }
+      knownIds.current = new Set(incoming.map((item) => item.id)); initialized.current = true;
+      setItems(incoming); setUnread(result.unread as number); setPreferences(result.preferences as NotificationPreferences);
     } catch { /* Le prochain rafraîchissement réessaiera. */ }
   }, []);
 
@@ -52,6 +60,13 @@ export function NotificationCenter() {
     const refresh = window.setInterval(() => void load(), 30_000);
     return () => { window.clearTimeout(firstLoad); window.clearInterval(refresh); };
   }, [load]);
+
+  async function enableSystemNotifications() {
+    if (!("Notification" in window)) return;
+    const permission = await Notification.requestPermission();
+    setSystemPermission(permission);
+    if (permission === "granted") new Notification("Notifications SIOVerse activées", { body: "Les prochaines nouveautés pourront apparaître sur ton bureau.", icon: "/icon.svg", tag: "sioverse-enabled" });
+  }
 
   async function update(payload: Record<string, unknown>) {
     setError("");
@@ -71,7 +86,7 @@ export function NotificationCenter() {
   return <>
     {open && <aside className="notification-panel" aria-label="Centre de notifications">
       <div className="notification-heading"><span><Bell size={18} /> Notifications {unread > 0 && <b>{unread}</b>}</span><div><button type="button" className={settings ? "active" : ""} onClick={() => setSettings((value) => !value)} aria-label="Réglages des notifications"><Settings2 size={16} /></button><button type="button" onClick={() => setOpen(false)} aria-label="Fermer les notifications"><X size={17} /></button></div></div>
-      {settings ? <section className="notification-settings"><strong>Ce que tu veux recevoir</strong><p>Ces réglages sont liés à ton compte.</p>{preferenceLabels.map(([key, label, detail]) => <button type="button" key={key} onClick={() => void togglePreference(key)} aria-pressed={preferences[key]}><span><b>{label}</b><small>{detail}</small></span><i className={preferences[key] ? "on" : ""} /></button>)}</section> : <>
+      {settings ? <section className="notification-settings"><strong>Ce que tu veux recevoir</strong><p>Ces réglages sont liés à ton compte.</p>{systemPermission !== "unsupported" && <button type="button" className="notification-system-toggle" onClick={() => void enableSystemNotifications()} disabled={systemPermission === "denied"} aria-pressed={systemPermission === "granted"}><span><b><BellRing size={13} /> Notifications système</b><small>{systemPermission === "granted" ? "Activées sur cet appareil" : systemPermission === "denied" ? "Bloquées dans le navigateur" : "Afficher les nouveautés hors de SIOVerse"}</small></span><i className={systemPermission === "granted" ? "on" : ""} /></button>}{preferenceLabels.map(([key, label, detail]) => <button type="button" key={key} onClick={() => void togglePreference(key)} aria-pressed={preferences[key]}><span><b>{label}</b><small>{detail}</small></span><i className={preferences[key] ? "on" : ""} /></button>)}</section> : <>
         <div className="notification-toolbar"><span>{unread ? `${unread} non lue${unread > 1 ? "s" : ""}` : "Tout est à jour"}</span>{unread > 0 && <button type="button" onClick={() => void update({ action: "read" })}><CheckCheck size={14} /> Tout marquer comme lu</button>}</div>
         <div className="notification-list">{items.length ? items.map((item) => {
           const category = categories[item.category]; const Icon = category.icon;

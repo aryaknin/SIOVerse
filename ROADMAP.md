@@ -13,16 +13,16 @@ Cette liste fixe l’ordre des prochains développements. Après chaque lot, le 
 
 - [x] Sélection multiple de fichiers.
 - [x] Déplacement, téléchargement ZIP et suppression en lot.
-- [ ] Meilleure prévisualisation Office, images, code et archives.
+- [x] Meilleure prévisualisation Office, images, code et archives.
 - [x] Indication « nouveau depuis ma dernière visite ».
 
 ## Agenda amélioré
 
-- [ ] Vue journée en plus de la vue semaine.
-- [ ] Cours annulés, déplacés ou modifiés mieux distingués.
-- [ ] Association d’un cours avec sa matière et ses ressources.
-- [ ] Affichage des contrôles directement dans l’emploi du temps.
-- [ ] Widget du prochain cours plus complet sur le bureau.
+- [x] Vue journée en plus de la vue semaine.
+- [x] Cours annulés, déplacés ou modifiés mieux distingués.
+- [x] Association d’un cours avec sa matière et ses ressources.
+- [x] Affichage des contrôles directement dans l’emploi du temps.
+- [x] Widget du prochain cours plus complet sur le bureau.
 
 ## Expérience « vrai OS »
 

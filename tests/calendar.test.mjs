@@ -72,7 +72,7 @@ test("toutes les dates publiées restent navigables, y compris le début de sema
   assert.deepEqual(calendar.events.map((event) => event.start.slice(0, 10)), ["2026-09-28", "2026-10-05", "2027-01-07"]);
 });
 
-test("les blocs sans intitulé et les cours annulés ne créent pas de fausses semaines", async () => {
+test("les blocs sans intitulé sont ignorés et les cours annulés restent visibles comme tels", async () => {
   const emptyEvents = [
     ["UID:missing-title", "DTSTART:20261102T090000Z", "DTEND:20261102T100000Z"],
     ["UID:blank-title", "DTSTART:20261109T090000Z", "DTEND:20261109T100000Z", "SUMMARY:   "],
@@ -83,20 +83,21 @@ test("les blocs sans intitulé et les cours annulés ne créent pas de fausses s
     ...emptyEvents,
   ), now);
 
-  assert.deepEqual(calendar.events.map((event) => event.title), ["Cybersécurité"]);
-  assert.deepEqual(await parseCalendar(calendarWith(...emptyEvents), now), { status: "no-upcoming", events: [] });
+  assert.deepEqual(calendar.events.map((event) => event.title), ["Cybersécurité", "Anglais"]);
+  assert.equal(calendar.events[1].status, "cancelled");
+  assert.deepEqual(await parseCalendar(calendarWith(...emptyEvents.slice(0, 2)), now), { status: "no-upcoming", events: [] });
 });
 
-test("une série bornée conserve ses cours éloignés et retire ses occurrences annulées", async () => {
+test("une série bornée conserve ses cours éloignés et signale ses occurrences annulées", async () => {
   const calendar = await parseCalendar(calendarWith(
     ["UID:weekly", "DTSTART;TZID=Europe/Paris:20261005T100000", "DTEND;TZID=Europe/Paris:20261005T110000", "RRULE:FREQ=WEEKLY;COUNT=60", "SUMMARY:Atelier"],
     ["UID:weekly", "RECURRENCE-ID;TZID=Europe/Paris:20261012T100000", "DTSTART;TZID=Europe/Paris:20261012T100000", "DTEND;TZID=Europe/Paris:20261012T110000", "SUMMARY:Atelier", "STATUS:CANCELLED"],
   ), now);
 
-  assert.equal(calendar.events.length, 59);
+  assert.equal(calendar.events.length, 60);
   assert.equal(calendar.events[0].start, "2026-10-05T08:00:00.000Z");
   assert.equal(calendar.events.at(-1).start, "2027-11-22T09:00:00.000Z");
-  assert.ok(calendar.events.every((event) => event.start.slice(0, 10) !== "2026-10-12"));
+  assert.equal(calendar.events.find((event) => event.start.slice(0, 10) === "2026-10-12")?.status, "cancelled");
 });
 
 test("une récurrence sans fin est limitée à un an de prévision", async () => {

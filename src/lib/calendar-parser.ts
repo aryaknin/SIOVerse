@@ -14,6 +14,7 @@ export type SchoolEvent = {
   start: string;
   end: string;
   allDay: boolean;
+  status: "confirmed" | "cancelled" | "moved" | "modified";
 };
 
 export type SchoolCalendar = {
@@ -88,18 +89,40 @@ function eventOccurrences(event: VEvent, now: Date): SchoolEvent[] {
   if (!(event.start instanceof Date) || Number.isNaN(event.start.getTime())) return [];
   const range = recurrenceRange(event, now);
   if (event.rrule && !range) return [];
-  const instances = event.rrule && range
+  const expanded = event.rrule && range
     ? ical.expandRecurringEvent(event, { ...range, expandOngoing: true })
     : [{ start: event.start, end: event.end ?? event.start, summary: event.summary, isFullDay: event.datetype === "date", event }];
+  const cancelledOverrides = event.rrule ? Object.values(event.recurrences ?? {}).filter((override) => override.status === "CANCELLED" && override.start instanceof Date).map((override) => ({
+    start: override.start,
+    end: override.end ?? override.start,
+    summary: override.summary ?? event.summary,
+    isFullDay: override.datetype === "date" || event.datetype === "date",
+    event: override,
+  })) : [];
+  const instances = [...expanded, ...cancelledOverrides] as Array<{
+    start: Date;
+    end: Date;
+    summary?: ParameterValue;
+    isFullDay: boolean;
+    event: VEvent;
+  }>;
 
   return instances.flatMap((instance) => {
-    if (instance.event.status === "CANCELLED") return [];
     const title = calendarText(instance.summary).trim();
     if (!title) return [];
     const start = instance.start;
     const end = instance.end;
     if (!(start instanceof Date) || Number.isNaN(start.getTime())) return [];
     const safeEnd = end instanceof Date && !Number.isNaN(end.getTime()) ? end : start;
+    const normalizedTitle = title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const recurrenceId = instance.event.recurrenceid;
+    const status: SchoolEvent["status"] = instance.event.status === "CANCELLED" || /\bannul/.test(normalizedTitle)
+      ? "cancelled"
+      : /\b(deplace|changement de salle)\b/.test(normalizedTitle) || recurrenceId instanceof Date && recurrenceId.getTime() !== start.getTime()
+        ? "moved"
+        : /\b(modifie|changement)\b/.test(normalizedTitle) || (instance.event.sequence ?? 0) > 0
+          ? "modified"
+          : "confirmed";
     return [{
       id: `${event.uid}-${start.toISOString()}`,
       title,
@@ -107,6 +130,7 @@ function eventOccurrences(event: VEvent, now: Date): SchoolEvent[] {
       start: start.toISOString(),
       end: safeEnd.toISOString(),
       allDay: instance.isFullDay,
+      status,
     }];
   });
 }

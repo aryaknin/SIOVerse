@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
-import { ArrowLeft, ArrowUp, BookOpen, ChevronDown, ChevronRight, Clock3, Download, ExternalLink, FileText, FolderInput, FolderOpen, Grid2X2, Link2, List, Pencil, Plus, Search, Star, Trash2, Upload, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
+import { Archive, ArrowLeft, ArrowUp, BookOpen, ChevronDown, ChevronRight, Clock3, Download, ExternalLink, FileText, FolderInput, FolderOpen, Grid2X2, Info, Link2, List, LoaderCircle, Pencil, Plus, RotateCcw, Search, Star, Trash2, Upload, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { EntCatalog, EntResource, ResourceKind } from "@/lib/ent";
 import { chapterPath, descendantChapterIds, resourceKindLabel, resourceKinds } from "@/lib/ent";
+import type { EntPreviewData } from "@/lib/ent-preview";
 
 const favoriteKey = "sioverse-resource-favorites-v1";
 const recentKey = "sioverse-resource-recent-v1";
@@ -36,6 +37,15 @@ function resourceIcon(kind: ResourceKind) {
   return kind === "LINK" ? Link2 : kind === "ARCHIVE" ? FolderOpen : kind === "COURSE" ? BookOpen : FileText;
 }
 
+const codeKeywords = /^(?:abstract|boolean|break|case|catch|class|const|continue|def|delete|do|else|enum|export|extends|false|final|finally|for|from|function|if|implements|import|in|instanceof|interface|let|new|null|package|private|protected|public|return|select|static|super|switch|this|throw|throws|true|try|type|typeof|update|var|void|while|with|yield)$/i;
+
+function highlightedLine(line: string): ReactNode[] {
+  return line.split(/(\/\/.*|#.*|<!--[\s\S]*?-->|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b\d+(?:\.\d+)?\b|\b[A-Za-z_$][\w$]*\b)/g).filter(Boolean).map((token, index) => {
+    const className = /^(\/\/|#|<!--)/.test(token) ? "comment" : /^("|')/.test(token) ? "string" : /^\d/.test(token) ? "number" : codeKeywords.test(token) ? "keyword" : "";
+    return className ? <span className={className} key={index}>{token}</span> : token;
+  });
+}
+
 export function ResourceExplorer({ initialCatalog, canManage, userId }: { initialCatalog: EntCatalog; canManage: boolean; userId: string }) {
   const personalFavoriteKey = `${favoriteKey}:${userId}`;
   const personalRecentKey = `${recentKey}:${userId}`;
@@ -66,6 +76,10 @@ export function ResourceExplorer({ initialCatalog, canManage, userId }: { initia
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<EntResource | null>(null);
+  const [previewData, setPreviewData] = useState<EntPreviewData | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [imageZoom, setImageZoom] = useState(1);
+  const [officeView, setOfficeView] = useState<"text" | "layout">("text");
   const [editing, setEditing] = useState<Editing | null>(null);
   const [editName, setEditName] = useState("");
   const [editTeacher, setEditTeacher] = useState("");
@@ -267,9 +281,35 @@ export function ResourceExplorer({ initialCatalog, canManage, userId }: { initia
     setRecent(updated); window.localStorage.setItem(personalRecentKey, JSON.stringify(updated));
   }
 
-  function openResource(resource: EntResource) {
+  async function openResource(resource: EntResource) {
     remember(resource.id);
-    if (resource.storedName) { setPreview(resource); previewDialog.current?.showModal(); }
+    if (!resource.storedName) return;
+    setPreview(resource); setPreviewData(null); setImageZoom(1); setOfficeView("text"); setPreviewLoading(true); previewDialog.current?.showModal();
+    if (/^(application\/pdf|image\/)/.test(resource.mimeType ?? "")) { setPreviewLoading(false); return; }
+    try {
+      const response = await fetch(`/api/ent/preview/${resource.id}`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Aperçu indisponible.");
+      setPreviewData(result as EntPreviewData);
+    } catch (cause) {
+      setPreviewData({ kind: "none", message: cause instanceof Error ? cause.message : "Aperçu indisponible." });
+    } finally { setPreviewLoading(false); }
+  }
+
+  function previewViewer() {
+    if (!preview) return null;
+    const fileUrl = `/api/ent/files/${preview.id}`;
+    if (preview.mimeType?.startsWith("image/")) return <div className="ent-image-viewer"><div className="ent-preview-toolbar"><button type="button" onClick={() => setImageZoom((value) => Math.max(.5, value - .25))} aria-label="Dézoomer"><ZoomOut size={16} /></button><strong>{Math.round(imageZoom * 100)} %</strong><button type="button" onClick={() => setImageZoom((value) => Math.min(4, value + .25))} aria-label="Zoomer"><ZoomIn size={16} /></button><button type="button" onClick={() => setImageZoom(1)} aria-label="Réinitialiser le zoom"><RotateCcw size={15} /></button></div><div className="ent-image-canvas"><img src={fileUrl} alt={`Aperçu de ${preview.title}`} style={{ transform: `scale(${imageZoom})` }} /></div></div>;
+    if (preview.mimeType === "application/pdf") return <iframe title={`Aperçu de ${preview.title}`} src={fileUrl} />;
+    if (previewLoading) return <div className="ent-preview-loading"><LoaderCircle size={25} /> Préparation de l’aperçu…</div>;
+    if (!previewData) return null;
+    if (previewData.kind === "text") return <div className="ent-code-shell"><div className="ent-code-head"><span>{previewData.language.toUpperCase()}</span><small>{previewData.lines.length.toLocaleString("fr-FR")} lignes affichées</small></div><ol className="ent-code-preview">{previewData.lines.map((line, index) => <li key={index}><code>{highlightedLine(line) || " "}</code></li>)}</ol>{previewData.truncated && <p className="ent-preview-truncated">Aperçu limité pour garder l’explorateur fluide.</p>}</div>;
+    if (previewData.kind === "archive") return <div className="ent-archive-preview"><div className="ent-archive-head"><Archive size={18} /><span><strong>{previewData.entries.length} élément{previewData.entries.length > 1 ? "s" : ""}</strong><small>Consultation uniquement · rien n’est extrait</small></span></div>{previewData.entries.length ? <div className="ent-archive-list">{previewData.entries.map((entry, index) => <div key={`${entry.name}-${index}`}><span className={entry.directory ? "folder" : "file"}>{entry.directory ? <FolderOpen size={15} /> : <FileText size={15} />}</span><strong title={entry.name}>{entry.name}</strong><small>{entry.directory ? "Dossier" : fileSize(entry.size)}</small></div>)}</div> : <div className="ent-no-preview">Cette archive est vide ou son format interne n’a pas pu être lu.</div>}{previewData.truncated && <p className="ent-preview-truncated">La liste est limitée aux 2 000 premiers éléments.</p>}</div>;
+    if (previewData.kind === "office") {
+      const showLayout = previewData.pdfAvailable && (officeView === "layout" || !previewData.sections.length);
+      return <div className="ent-office-shell"><div className="ent-office-tabs"><button type="button" className={!showLayout ? "active" : ""} disabled={!previewData.sections.length} onClick={() => setOfficeView("text")}><FileText size={14} /> Lecture rapide</button>{previewData.pdfAvailable && <button type="button" className={showLayout ? "active" : ""} onClick={() => setOfficeView("layout")}><ExternalLink size={14} /> Mise en page originale</button>}</div>{showLayout ? <iframe title={`Aperçu Office de ${preview.title}`} src={`/api/ent/preview/${preview.id}?format=pdf`} /> : <div className="ent-office-preview">{previewData.sections.map((section, index) => <section key={`${section.title}-${index}`}><h4>{section.title}</h4>{section.lines.length ? section.lines.map((line, lineIndex) => <p key={lineIndex}>{line}</p>) : <p className="muted">Aucun texte détecté.</p>}</section>)}</div>}</div>;
+    }
+    return <div className="ent-no-preview">{previewData.message}</div>;
   }
 
   function toggleSelection(id: string) {
@@ -375,6 +415,6 @@ export function ResourceExplorer({ initialCatalog, canManage, userId }: { initia
 
     <dialog ref={batchMoveDialog} className="ent-dialog" onClose={() => setError("")}><form method="dialog" className="ent-dialog-close"><button aria-label="Fermer"><X size={18} /></button></form><div className="ent-dialog-heading"><span><FolderInput size={20} /></span><h3>Déplacer {selectedIds.length} ressource{selectedIds.length > 1 ? "s" : ""}</h3><p>Tous les fichiers sélectionnés seront rangés dans le même dossier.</p></div><form className="ent-form" onSubmit={moveSelection}><label>Dossier de destination<select required value={batchMoveTarget} onChange={(event) => setBatchMoveTarget(event.target.value)}>{catalog.subjects.map((subject) => <optgroup label={subject.name} key={subject.id}>{catalog.chapters.filter((chapter) => chapter.subjectId === subject.id).map((chapter) => <option key={chapter.id} value={`${subject.id}/${chapter.id}`}>{chapterPath(catalog.chapters, chapter.id).join(" / ")}</option>)}</optgroup>)}</select></label><button className="ent-primary" disabled={busy || !batchMoveTarget}>{busy ? "Déplacement…" : "Déplacer la sélection"}</button></form>{error && <p className="ent-error" role="alert">{error}</p>}</dialog>
 
-    <dialog ref={previewDialog} className="ent-dialog ent-preview" onClose={() => setPreview(null)}><form method="dialog" className="ent-dialog-close"><button aria-label="Fermer"><X size={18} /></button></form>{preview && <><span className="ent-kind">{resourceKindLabel(preview.kind)}</span><h3>{preview.title}</h3><p>{preview.originalName}</p>{preview.mimeType && /^(application\/pdf|image\/|text\/plain)/.test(preview.mimeType) ? <iframe title={`Aperçu de ${preview.title}`} src={`/api/ent/files/${preview.id}`} /> : <div className="ent-no-preview">L’aperçu n’est pas disponible pour ce type de fichier.</div>}<a className="ent-primary" href={`/api/ent/files/${preview.id}`} download={preview.originalName ?? undefined}><Download size={16} /> Télécharger le document</a></>}</dialog>
+    <dialog ref={previewDialog} className="ent-dialog ent-preview" onClose={() => { setPreview(null); setPreviewData(null); setImageZoom(1); setOfficeView("text"); }}><form method="dialog" className="ent-dialog-close"><button aria-label="Fermer"><X size={18} /></button></form>{preview && <><header className="ent-preview-heading"><span className="ent-kind">{resourceKindLabel(preview.kind)}</span><h3>{preview.title}</h3><p>{preview.originalName}</p></header><div className="ent-preview-layout"><main>{previewViewer()}</main><aside><h4><Info size={16} /> Informations</h4><dl><div><dt>Type</dt><dd>{preview.originalName?.split(".").at(-1)?.toUpperCase() ?? resourceKindLabel(preview.kind)}</dd></div><div><dt>Taille</dt><dd>{fileSize(preview.sizeBytes)}</dd></div><div><dt>Ajouté le</dt><dd>{displayDate(preview.createdAt)}</dd></div><div><dt>Matière</dt><dd>{catalog.subjects.find((subject) => subject.id === catalog.chapters.find((chapter) => chapter.id === preview.chapterId)?.subjectId)?.name ?? "—"}</dd></div><div><dt>Dossier</dt><dd>{chapterPath(catalog.chapters, preview.chapterId).join(" / ") || "—"}</dd></div><div><dt>Professeur</dt><dd>{preview.teacher || catalog.subjects.find((subject) => subject.id === catalog.chapters.find((chapter) => chapter.id === preview.chapterId)?.subjectId)?.teacher || "—"}</dd></div></dl><a className="ent-primary" href={`/api/ent/files/${preview.id}`} download={preview.originalName ?? undefined}><Download size={16} /> Télécharger</a></aside></div></>}</dialog>
   </div>;
 }
