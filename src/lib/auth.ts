@@ -104,7 +104,7 @@ export async function registerUser(input: NewUser, allowBootstrapAdmin: boolean,
   } finally { client.release(); }
 }
 
-export type ListedInvite = { email: string; createdAt: string; expiresAt: string };
+export type ListedInvite = { id: string; email: string; createdAt: string; expiresAt: string };
 
 export async function createInvite(email: string, actorId: string): Promise<{ code: string; expiresAt: string }> {
   await ensureSchema();
@@ -116,8 +116,14 @@ export async function createInvite(email: string, actorId: string): Promise<{ co
 
 export async function listInvites(): Promise<ListedInvite[]> {
   await ensureSchema();
-  const result = await database().query("SELECT email,created_at,expires_at FROM sio_invites WHERE used_at IS NULL AND expires_at>now() ORDER BY created_at DESC LIMIT 100");
-  return result.rows.map((row) => ({ email: row.email, createdAt: row.created_at.toISOString(), expiresAt: row.expires_at.toISOString() }));
+  const result = await database().query("SELECT token_hash,email,created_at,expires_at FROM sio_invites WHERE used_at IS NULL AND expires_at>now() ORDER BY created_at DESC LIMIT 100");
+  return result.rows.map((row) => ({ id: row.token_hash, email: row.email, createdAt: row.created_at.toISOString(), expiresAt: row.expires_at.toISOString() }));
+}
+
+export async function revokeInvite(id: string): Promise<boolean> {
+  await ensureSchema();
+  const result = await database().query("DELETE FROM sio_invites WHERE token_hash=$1 AND used_at IS NULL RETURNING token_hash", [id]);
+  return Boolean(result.rowCount);
 }
 
 export async function createUserByAdmin(input: NewUser & { role: UserRole }): Promise<SessionUser> {

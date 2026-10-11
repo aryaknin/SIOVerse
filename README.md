@@ -61,7 +61,7 @@ Les administrateurs peuvent préparer des contrôles et devoirs avec une date, u
 
 ### Utilisateurs
 
-L’espace d’administration permet de créer des comptes, générer des invitations temporaires, attribuer les rôles `ADMIN` et `MEMBER`, supprimer des comptes et consulter les invitations valides.
+L’espace d’administration permet de créer des comptes, générer ou révoquer des invitations temporaires, attribuer les rôles `ADMIN` et `MEMBER`, supprimer des comptes et consulter les invitations valides.
 
 ### SIOVerse communautaire
 
