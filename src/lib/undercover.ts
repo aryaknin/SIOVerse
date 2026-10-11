@@ -3,7 +3,7 @@ import "server-only";
 import { randomBytes, randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import type { SessionUser } from "./auth";
-import { buildRoleDeck, determineWinner, normalizeGuess, shuffle, type UndercoverRole, type UndercoverWinner } from "./undercover-game";
+import { buildRoleDeck, determineWinner, isCorrectWhiteGuess, normalizeGuess, shuffle, type UndercoverRole, type UndercoverWinner } from "./undercover-game";
 import { defaultUndercoverPairs } from "./undercover-words";
 
 export type WordMode = "NORMAL" | "SIO";
@@ -314,7 +314,7 @@ export async function submitWhiteGuess(userId: string, codeValue: string, guessV
     const { lobby, member } = await lobbyAndMemberForUpdate(client, code, userId);
     if (lobby.phase !== "WHITE_GUESS" || lobby.current_turn_member !== member.id || member.role !== "MISTER_WHITE") throw new Error("Cette tentative ne t’est pas destinée.");
     const civilWord = (await client.query("SELECT secret_word FROM sio_undercover_members WHERE lobby_id=$1 AND role='CIVIL' LIMIT 1", [lobby.id])).rows[0]?.secret_word ?? "";
-    if (normalizeGuess(civilWord) === guess) {
+    if (isCorrectWhiteGuess(civilWord, guess)) {
       await client.query("UPDATE sio_undercover_lobbies SET phase='FINISHED',winner='MISTER_WHITE',current_turn_member=NULL,last_event='Mister White a trouvé le mot Civil !',updated_at=now() WHERE id=$1", [lobby.id]);
     } else await concludeOrNextRound(client, lobby.id, `${member.display_name} (Mister White)`);
   });

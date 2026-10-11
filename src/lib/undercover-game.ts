@@ -33,3 +33,10 @@ export function determineWinner(players: { role: UndercoverRole; eliminated: boo
 export function normalizeGuess(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("fr").replace(/[^a-z0-9]+/g, " ").trim();
 }
+
+export function isCorrectWhiteGuess(expectedWord: string, submittedGuess: string): boolean {
+  const expected = normalizeGuess(expectedWord);
+  const submitted = normalizeGuess(submittedGuess);
+  if (!expected || !submitted) return false;
+  return submitted === expected || ` ${submitted} `.includes(` ${expected} `);
+}

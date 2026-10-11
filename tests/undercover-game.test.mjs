@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildRoleDeck, determineWinner, normalizeGuess, shuffle } from "../src/lib/undercover-game.ts";
+import { buildRoleDeck, determineWinner, isCorrectWhiteGuess, normalizeGuess, shuffle } from "../src/lib/undercover-game.ts";
 
 test("buildRoleDeck creates the requested hidden composition", () => {
   const roles = buildRoleDeck(7, 2, true);
@@ -26,4 +26,11 @@ test("winner rules cover civilians and undercover parity", () => {
 
 test("Mister White guesses ignore accents and punctuation", () => {
   assert.equal(normalizeGuess("  École-directe ! "), "ecole directe");
+});
+
+test("Mister White can include the correct word in a longer answer", () => {
+  assert.equal(isCorrectWhiteGuess("Mercredi", "MERCREDI Addams"), true);
+  assert.equal(isCorrectWhiteGuess("École Directe", "je pense à ecole-directe !"), true);
+  assert.equal(isCorrectWhiteGuess("Or", "Fortnite"), false);
+  assert.equal(isCorrectWhiteGuess("Mercredi", "Mardi Addams"), false);
 });
