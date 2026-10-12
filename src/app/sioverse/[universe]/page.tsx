@@ -96,7 +96,12 @@ export default async function UniversePage({
       />
     );
   if (universe === "makeitsio")
-    return <MakeItSioGame username={user.username} />;
+    return (
+      <MakeItSioGame
+        username={user.username}
+        canManage={user.role === "ADMIN"}
+      />
+    );
 
   return (
     <main className={`verse-shell universe-screen ${world.className}`}>

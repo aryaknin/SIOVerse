@@ -29,6 +29,8 @@ const schema = z.discriminatedUnion("action", [
     code,
     totalRounds: z.number().int().min(1).max(10),
     captionSeconds: z.number().int().min(30).max(300),
+    mode: z.enum(["NORMAL", "TOPICS", "SAME", "RELAXED"]),
+    packIds: z.array(z.uuid()).min(1).max(20),
   }),
   z.object({ action: z.literal("start"), code }),
   z.object({

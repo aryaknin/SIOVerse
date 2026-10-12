@@ -75,7 +75,7 @@ Le portail communautaire est organisé en quatre univers :
 - **Undercover** : jeu social en salons privés avec rôles, indices et votes ;
 - **MakeItSIO** : jeu multijoueur de création et de vote de mèmes.
 
-Les quatre univers sont fonctionnels. MakeItSIO propose actuellement son mode Normal : salons privés, création chronométrée, votes, Meme Buddy, résultats par manche et podium final.
+Les quatre univers sont fonctionnels. MakeItSIO propose les modes Normal, Sujets, Même mème et Détendu, avec salons privés, création chronométrée, votes, Meme Buddy, résultats et packs administrables.
 
 ## Fonctionnement général
 
@@ -236,6 +236,6 @@ Chaque `push` sur `main` déclenche le workflow GitHub Actions **Qualité et dé
 
 ## État du projet
 
-SIO OS, l’authentification, l’administration, l’agenda, les ressources, les contrôles et les quatre univers communautaires sont utilisables. Les modes supplémentaires et les packs personnalisés de MakeItSIO constituent la prochaine extension du jeu.
+SIO OS, l’authentification, l’administration, l’agenda, les ressources, les contrôles et les quatre univers communautaires sont utilisables. La prochaine extension de MakeItSIO portera sur l’historique, les statistiques, la sauvegarde des créations, la reconnexion avancée et la modération.
 
 Le projet est destiné à une communauté privée. Le dépôt public expose le code source, mais jamais les données de production, les fichiers envoyés, les mots de passe, les sessions ou les URL iCal.

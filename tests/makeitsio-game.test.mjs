@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  assignTemplatePaths,
   normalizeLobbyCode,
   scoreMemeRound,
 } from "../src/lib/makeitsio-game.ts";
@@ -49,4 +50,23 @@ test("Meme Buddy rewards both the meme and its supporter", () => {
 
 test("lobby codes are normalized", () => {
   assert.equal(normalizeLobbyCode(" ab-c12!3 "), "ABC123");
+});
+
+test("normal and same-meme modes assign templates correctly", () => {
+  assert.deepEqual(assignTemplatePaths(["a", "b", "c"], 3, false), [
+    "a",
+    "b",
+    "c",
+  ]);
+  assert.deepEqual(assignTemplatePaths(["a", "b", "c"], 3, true), [
+    "a",
+    "a",
+    "a",
+  ]);
+  assert.deepEqual(assignTemplatePaths(["a", "b"], 4, false), [
+    "a",
+    "b",
+    "a",
+    "b",
+  ]);
 });

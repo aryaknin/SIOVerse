@@ -58,3 +58,14 @@ export function normalizeLobbyCode(value: string) {
     .replace(/[^A-Z0-9]/g, "")
     .slice(0, 6);
 }
+
+export function assignTemplatePaths(
+  paths: string[],
+  playerCount: number,
+  sameMeme: boolean,
+) {
+  if (!paths.length) throw new Error("Aucun modèle disponible.");
+  return Array.from({ length: playerCount }, (_, index) =>
+    sameMeme ? paths[0] : paths[index % paths.length],
+  );
+}

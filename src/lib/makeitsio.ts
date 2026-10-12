@@ -4,6 +4,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import type { SessionUser } from "./auth";
 import {
+  assignTemplatePaths,
   normalizeLobbyCode,
   scoreMemeRound,
   type MemeVoteValue,
@@ -12,6 +13,24 @@ import {
 
 export type MakeItSioPhase =
   "LOBBY" | "CREATE" | "VOTE" | "ROUND_RESULTS" | "FINISHED";
+export type MakeItSioMode = "NORMAL" | "TOPICS" | "SAME" | "RELAXED";
+export type MemeTemplatePack = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  builtin: boolean;
+  templateCount: number;
+};
+export type MemeStudioTemplate = {
+  id: string;
+  packId: string;
+  title: string;
+  mediaType: string;
+  enabled: boolean;
+  source: string;
+  createdAt: string;
+};
+export type MemeStudioTopic = { id: string; label: string; enabled: boolean };
 export type MakeItSioMember = {
   id: string;
   name: string;
@@ -40,6 +59,10 @@ export type MakeItSioLobbyState = {
   round: number;
   totalRounds: number;
   captionSeconds: number;
+  mode: MakeItSioMode;
+  selectedPackIds: string[];
+  availablePacks: MemeTemplatePack[];
+  topic: string | null;
   phaseEndsAt: string | null;
   lastEvent: string;
   members: MakeItSioMember[];
@@ -53,16 +76,6 @@ export type MakeItSioLobbyState = {
     buddySubmissionId: string | null;
   };
 };
-
-const templates = [
-  "/wallpapers/aurora.gif",
-  "/wallpapers/circuit.gif",
-  "/wallpapers/matrix.gif",
-  "/wallpapers/nebula.gif",
-  "/wallpapers/nocturne.gif",
-  "/wallpapers/ocean.gif",
-  "/wallpapers/synthwave.gif",
-];
 
 const pool = process.env.DATABASE_URL
   ? new Pool({
@@ -95,6 +108,34 @@ export async function ensureMakeItSioSchema() {
       last_event text NOT NULL DEFAULT 'Le studio attend ses créateurs.',
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    ALTER TABLE sio_meme_game_lobbies ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT 'NORMAL';
+    ALTER TABLE sio_meme_game_lobbies ADD COLUMN IF NOT EXISTS selected_pack_ids text[] NOT NULL DEFAULT ARRAY['00000000-0000-0000-0000-000000001000'];
+    ALTER TABLE sio_meme_game_lobbies ADD COLUMN IF NOT EXISTS current_topic text;
+    CREATE TABLE IF NOT EXISTS sio_meme_game_packs (
+      id uuid PRIMARY KEY,
+      name text NOT NULL UNIQUE,
+      enabled boolean NOT NULL DEFAULT true,
+      builtin boolean NOT NULL DEFAULT false,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS sio_meme_game_templates (
+      id uuid PRIMARY KEY,
+      pack_id uuid NOT NULL REFERENCES sio_meme_game_packs(id) ON DELETE CASCADE,
+      title text NOT NULL,
+      source_path text,
+      media_data bytea,
+      media_type text NOT NULL DEFAULT 'image/gif',
+      enabled boolean NOT NULL DEFAULT true,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CHECK (source_path IS NOT NULL OR media_data IS NOT NULL)
+    );
+    CREATE INDEX IF NOT EXISTS sio_meme_game_templates_pack_idx ON sio_meme_game_templates(pack_id,enabled);
+    CREATE TABLE IF NOT EXISTS sio_meme_game_topics (
+      id uuid PRIMARY KEY,
+      label text NOT NULL UNIQUE,
+      enabled boolean NOT NULL DEFAULT true,
+      created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE IF NOT EXISTS sio_meme_game_members (
       id uuid PRIMARY KEY,
@@ -136,6 +177,24 @@ export async function ensureMakeItSioSchema() {
       created_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY(submission_id,voter_id)
     );
+    INSERT INTO sio_meme_game_packs(id,name,builtin) VALUES('00000000-0000-0000-0000-000000001000','Classiques SIOVerse',true) ON CONFLICT DO NOTHING;
+    INSERT INTO sio_meme_game_templates(id,pack_id,title,source_path,media_type) VALUES
+      ('00000000-0000-0000-0000-000000001001','00000000-0000-0000-0000-000000001000','Aurore','/wallpapers/aurora.gif','image/gif'),
+      ('00000000-0000-0000-0000-000000001002','00000000-0000-0000-0000-000000001000','Circuit','/wallpapers/circuit.gif','image/gif'),
+      ('00000000-0000-0000-0000-000000001003','00000000-0000-0000-0000-000000001000','Matrix','/wallpapers/matrix.gif','image/gif'),
+      ('00000000-0000-0000-0000-000000001004','00000000-0000-0000-0000-000000001000','Nébuleuse','/wallpapers/nebula.gif','image/gif'),
+      ('00000000-0000-0000-0000-000000001005','00000000-0000-0000-0000-000000001000','Nocturne','/wallpapers/nocturne.gif','image/gif'),
+      ('00000000-0000-0000-0000-000000001006','00000000-0000-0000-0000-000000001000','Océan','/wallpapers/ocean.gif','image/gif'),
+      ('00000000-0000-0000-0000-000000001007','00000000-0000-0000-0000-000000001000','Synthwave','/wallpapers/synthwave.gif','image/gif')
+      ON CONFLICT DO NOTHING;
+    INSERT INTO sio_meme_game_topics(id,label) VALUES
+      ('00000000-0000-0000-0000-000000002001','Quand le prof annonce un contrôle surprise'),
+      ('00000000-0000-0000-0000-000000002002','Le lundi matin en cours'),
+      ('00000000-0000-0000-0000-000000002003','Quand ton code fonctionne du premier coup'),
+      ('00000000-0000-0000-0000-000000002004','Le travail de groupe vu par la classe'),
+      ('00000000-0000-0000-0000-000000002005','La veille du rendu de projet'),
+      ('00000000-0000-0000-0000-000000002006','Quand PostgreSQL refuse de démarrer')
+      ON CONFLICT DO NOTHING;
   `,
     )
     .then(() => {})
@@ -225,6 +284,12 @@ async function createRound(
   roundNumber: number,
   seconds: number,
 ) {
+  const lobby = (
+    await client.query(
+      "SELECT mode,selected_pack_ids FROM sio_meme_game_lobbies WHERE id=$1",
+      [lobbyId],
+    )
+  ).rows[0];
   const roundId = randomUUID();
   await client.query(
     "INSERT INTO sio_meme_game_rounds(id,lobby_id,round) VALUES($1,$2,$3)",
@@ -236,25 +301,57 @@ async function createRound(
       [lobbyId],
     )
   ).rows;
-  const offset = Math.floor(Math.random() * templates.length);
+  let available = (
+    await client.query(
+      `SELECT id,source_path FROM sio_meme_game_templates
+    WHERE enabled AND pack_id::text=ANY($1::text[]) AND COALESCE(source_path,'/api/makeitsio/templates/'||id::text||'/media') NOT IN (
+      SELECT s.template_path FROM sio_meme_game_submissions s JOIN sio_meme_game_rounds r ON r.id=s.round_id WHERE r.lobby_id=$2
+    ) ORDER BY random()`,
+      [lobby.selected_pack_ids, lobbyId],
+    )
+  ).rows;
+  if (!available.length)
+    available = (
+      await client.query(
+        `SELECT id,source_path FROM sio_meme_game_templates
+    WHERE enabled AND pack_id::text=ANY($1::text[]) ORDER BY random()`,
+        [lobby.selected_pack_ids],
+      )
+    ).rows;
+  if (!available.length)
+    throw new Error(
+      "Les packs sélectionnés ne contiennent aucun modèle actif.",
+    );
+  const paths = available.map(
+    (item) => item.source_path ?? `/api/makeitsio/templates/${item.id}/media`,
+  );
+  const assignedPaths = assignTemplatePaths(
+    paths,
+    members.length,
+    lobby.mode === "SAME",
+  );
   for (let index = 0; index < members.length; index += 1) {
     await client.query(
       "INSERT INTO sio_meme_game_submissions(id,round_id,member_id,template_path) VALUES($1,$2,$3,$4)",
-      [
-        randomUUID(),
-        roundId,
-        members[index].id,
-        templates[(offset + index + roundNumber) % templates.length],
-      ],
+      [randomUUID(), roundId, members[index].id, assignedPaths[index]],
     );
   }
+  const topic =
+    lobby.mode === "TOPICS"
+      ? ((
+          await client.query(
+            "SELECT label FROM sio_meme_game_topics WHERE enabled ORDER BY random() LIMIT 1",
+          )
+        ).rows[0]?.label ?? null)
+      : null;
   await client.query(
-    "UPDATE sio_meme_game_lobbies SET phase='CREATE',round=$2,phase_ends_at=now()+($3::text || ' seconds')::interval,last_event=$4,updated_at=now() WHERE id=$1",
+    "UPDATE sio_meme_game_lobbies SET phase='CREATE',round=$2,phase_ends_at=now()+($3::text || ' seconds')::interval,current_topic=$5,last_event=$4,updated_at=now() WHERE id=$1",
     [
       lobbyId,
       roundNumber,
       seconds,
       `Manche ${roundNumber} : créez votre meilleur mème !`,
+      topic,
     ],
   );
 }
@@ -320,9 +417,16 @@ async function advanceExpiredCreate(
     FROM sio_meme_game_rounds r WHERE s.round_id=r.id AND r.lobby_id=$1 AND r.round=$2`,
     [lobby.id, lobby.round],
   );
+  const relaxed = lobby.mode === "RELAXED";
   await client.query(
-    "UPDATE sio_meme_game_lobbies SET phase='VOTE',phase_ends_at=NULL,last_event='Temps écoulé : place aux votes !',updated_at=now() WHERE id=$1",
-    [lobby.id],
+    `UPDATE sio_meme_game_lobbies SET phase=$2,phase_ends_at=NULL,last_event=$3,updated_at=now() WHERE id=$1`,
+    [
+      lobby.id,
+      relaxed ? "ROUND_RESULTS" : "VOTE",
+      relaxed
+        ? "Temps écoulé : découvrez toutes les créations !"
+        : "Temps écoulé : place aux votes !",
+    ],
   );
 }
 
@@ -400,13 +504,28 @@ export async function joinMakeItSioLobby(
 export async function updateMakeItSioSettings(
   userId: string,
   codeValue: string,
-  input: { totalRounds: number; captionSeconds: number },
+  input: {
+    totalRounds: number;
+    captionSeconds: number;
+    mode: MakeItSioMode;
+    packIds: string[];
+  },
 ) {
   await ensureMakeItSioSchema();
   const code = normalizeLobbyCode(codeValue);
+  if (!input.packIds.length)
+    throw new Error("Sélectionne au moins un pack de modèles.");
+  const valid = (
+    await database().query(
+      "SELECT id::text FROM sio_meme_game_packs WHERE enabled AND id::text=ANY($1::text[])",
+      [input.packIds],
+    )
+  ).rows.map((row) => row.id);
+  if (!valid.length)
+    throw new Error("Aucun pack sélectionné n’est disponible.");
   const result = await database().query(
-    "UPDATE sio_meme_game_lobbies SET total_rounds=$3,caption_seconds=$4,updated_at=now() WHERE code=$1 AND host_user_id=$2 AND phase='LOBBY' RETURNING id",
-    [code, userId, input.totalRounds, input.captionSeconds],
+    "UPDATE sio_meme_game_lobbies SET total_rounds=$3,caption_seconds=$4,mode=$5,selected_pack_ids=$6,updated_at=now() WHERE code=$1 AND host_user_id=$2 AND phase='LOBBY' RETURNING id",
+    [code, userId, input.totalRounds, input.captionSeconds, input.mode, valid],
   );
   if (!result.rowCount)
     throw new Error("Seul le chef du salon peut modifier ces réglages.");
@@ -472,8 +591,14 @@ export async function submitMakeItSioCaption(
     );
     if (!missing)
       await client.query(
-        "UPDATE sio_meme_game_lobbies SET phase='VOTE',phase_ends_at=NULL,last_event='Tous les mèmes sont prêts. À vos votes !',updated_at=now() WHERE id=$1",
-        [lobby.id],
+        "UPDATE sio_meme_game_lobbies SET phase=$2,phase_ends_at=NULL,last_event=$3,updated_at=now() WHERE id=$1",
+        [
+          lobby.id,
+          lobby.mode === "RELAXED" ? "ROUND_RESULTS" : "VOTE",
+          lobby.mode === "RELAXED"
+            ? "Toutes les créations sont prêtes : profitez de la galerie !"
+            : "Tous les mèmes sont prêts. À vos votes !",
+        ],
       );
     else
       await client.query(
@@ -573,7 +698,7 @@ export async function rematchMakeItSio(userId: string, codeValue: string) {
   await ensureMakeItSioSchema();
   const code = normalizeLobbyCode(codeValue);
   const result = await database().query(
-    `UPDATE sio_meme_game_lobbies SET phase='LOBBY',round=0,phase_ends_at=NULL,last_event='Le studio est prêt pour une revanche.',updated_at=now()
+    `UPDATE sio_meme_game_lobbies SET phase='LOBBY',round=0,phase_ends_at=NULL,current_topic=NULL,last_event='Le studio est prêt pour une revanche.',updated_at=now()
     WHERE code=$1 AND host_user_id=$2 AND phase='FINISHED' RETURNING id`,
     [code, userId],
   );
@@ -655,6 +780,11 @@ export async function getMakeItSioLobby(
   ).rows;
   const viewer = members.find((row) => row.user_id === userId);
   if (!viewer) return null;
+  const packs = (
+    await database()
+      .query(`SELECT p.id,p.name,p.enabled,p.builtin,count(t.id) FILTER (WHERE t.enabled)::integer AS template_count
+    FROM sio_meme_game_packs p LEFT JOIN sio_meme_game_templates t ON t.pack_id=p.id WHERE p.enabled GROUP BY p.id ORDER BY p.builtin DESC,p.name`)
+  ).rows;
   const submissions = lobby.round
     ? (
         await database().query(
@@ -676,6 +806,16 @@ export async function getMakeItSioLobby(
     round: lobby.round,
     totalRounds: lobby.total_rounds,
     captionSeconds: lobby.caption_seconds,
+    mode: lobby.mode,
+    selectedPackIds: lobby.selected_pack_ids,
+    availablePacks: packs.map((row) => ({
+      id: row.id,
+      name: row.name,
+      enabled: row.enabled,
+      builtin: row.builtin,
+      templateCount: row.template_count,
+    })),
+    topic: lobby.current_topic,
     phaseEndsAt: lobby.phase_ends_at?.toISOString() ?? null,
     lastEvent: lobby.last_event,
     members: members.map((row) => ({
@@ -716,4 +856,201 @@ export async function getMakeItSioLobby(
         submissions.find((row) => row.viewer_buddy)?.id ?? null,
     },
   };
+}
+
+export async function listMemeStudio(): Promise<{
+  packs: MemeTemplatePack[];
+  templates: MemeStudioTemplate[];
+  topics: MemeStudioTopic[];
+}> {
+  await ensureMakeItSioSchema();
+  const [packs, templatesResult, topics] = await Promise.all([
+    database().query(
+      `SELECT p.id,p.name,p.enabled,p.builtin,count(t.id) FILTER (WHERE t.enabled)::integer AS template_count FROM sio_meme_game_packs p LEFT JOIN sio_meme_game_templates t ON t.pack_id=p.id GROUP BY p.id ORDER BY p.builtin DESC,p.name`,
+    ),
+    database().query(
+      "SELECT id,pack_id,title,media_type,enabled,source_path,created_at FROM sio_meme_game_templates ORDER BY created_at,title",
+    ),
+    database().query(
+      "SELECT id,label,enabled FROM sio_meme_game_topics ORDER BY label",
+    ),
+  ]);
+  return {
+    packs: packs.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      enabled: row.enabled,
+      builtin: row.builtin,
+      templateCount: row.template_count,
+    })),
+    templates: templatesResult.rows.map((row) => ({
+      id: row.id,
+      packId: row.pack_id,
+      title: row.title,
+      mediaType: row.media_type,
+      enabled: row.enabled,
+      source: row.source_path ?? `/api/makeitsio/templates/${row.id}/media`,
+      createdAt: row.created_at.toISOString(),
+    })),
+    topics: topics.rows.map((row) => ({
+      id: row.id,
+      label: row.label,
+      enabled: row.enabled,
+    })),
+  };
+}
+
+export async function createMemePack(nameValue: string) {
+  await ensureMakeItSioSchema();
+  const name = nameValue.trim().replace(/\s+/g, " ").slice(0, 60);
+  if (name.length < 2) throw new Error("Le nom du pack est trop court.");
+  try {
+    await database().query(
+      "INSERT INTO sio_meme_game_packs(id,name) VALUES($1,$2)",
+      [randomUUID(), name],
+    );
+  } catch (error) {
+    if ((error as { code?: string }).code === "23505")
+      throw new Error("Ce nom de pack existe déjà.");
+    throw error;
+  }
+  return listMemeStudio();
+}
+
+export async function createMemeTemplate(
+  packId: string,
+  titleValue: string,
+  media: Buffer,
+  mediaType: string,
+) {
+  await ensureMakeItSioSchema();
+  const title = titleValue.trim().replace(/\s+/g, " ").slice(0, 80);
+  if (title.length < 2) throw new Error("Le titre du modèle est trop court.");
+  if (
+    !/^image\/(?:png|jpeg|webp|gif)$/.test(mediaType) ||
+    media.length < 1 ||
+    media.length > 10 * 1024 * 1024
+  )
+    throw new Error(
+      "Utilise une image PNG, JPG, WebP ou GIF de 10 Mo maximum.",
+    );
+  const pack = await database().query(
+    "SELECT id FROM sio_meme_game_packs WHERE id=$1",
+    [packId],
+  );
+  if (!pack.rowCount) throw new Error("Pack introuvable.");
+  await database().query(
+    "INSERT INTO sio_meme_game_templates(id,pack_id,title,media_data,media_type) VALUES($1,$2,$3,$4,$5)",
+    [randomUUID(), packId, title, media, mediaType],
+  );
+  return listMemeStudio();
+}
+
+export async function createMemeTopic(labelValue: string) {
+  await ensureMakeItSioSchema();
+  const label = labelValue.trim().replace(/\s+/g, " ").slice(0, 120);
+  if (label.length < 3) throw new Error("Le sujet est trop court.");
+  try {
+    await database().query(
+      "INSERT INTO sio_meme_game_topics(id,label) VALUES($1,$2)",
+      [randomUUID(), label],
+    );
+  } catch (error) {
+    if ((error as { code?: string }).code === "23505")
+      throw new Error("Ce sujet existe déjà.");
+    throw error;
+  }
+  return listMemeStudio();
+}
+
+export async function updateMemeStudioItem(
+  kind: "pack" | "template" | "topic",
+  id: string,
+  input: { name?: string; enabled?: boolean; packId?: string },
+) {
+  await ensureMakeItSioSchema();
+  if (kind === "pack") {
+    const current = (
+      await database().query(
+        "SELECT builtin,name FROM sio_meme_game_packs WHERE id=$1",
+        [id],
+      )
+    ).rows[0];
+    if (!current) throw new Error("Pack introuvable.");
+    const name = input.name?.trim().slice(0, 60) || current.name;
+    await database().query(
+      "UPDATE sio_meme_game_packs SET name=$2,enabled=COALESCE($3,enabled) WHERE id=$1",
+      [id, name, input.enabled ?? null],
+    );
+  } else if (kind === "template") {
+    const current = (
+      await database().query(
+        "SELECT title,pack_id FROM sio_meme_game_templates WHERE id=$1",
+        [id],
+      )
+    ).rows[0];
+    if (!current) throw new Error("Modèle introuvable.");
+    await database().query(
+      "UPDATE sio_meme_game_templates SET title=$2,pack_id=$3,enabled=COALESCE($4,enabled) WHERE id=$1",
+      [
+        id,
+        input.name?.trim().slice(0, 80) || current.title,
+        input.packId || current.pack_id,
+        input.enabled ?? null,
+      ],
+    );
+  } else {
+    const current = (
+      await database().query(
+        "SELECT label FROM sio_meme_game_topics WHERE id=$1",
+        [id],
+      )
+    ).rows[0];
+    if (!current) throw new Error("Sujet introuvable.");
+    await database().query(
+      "UPDATE sio_meme_game_topics SET label=$2,enabled=COALESCE($3,enabled) WHERE id=$1",
+      [
+        id,
+        input.name?.trim().slice(0, 120) || current.label,
+        input.enabled ?? null,
+      ],
+    );
+  }
+  return listMemeStudio();
+}
+
+export async function deleteMemeStudioItem(
+  kind: "pack" | "template" | "topic",
+  id: string,
+) {
+  await ensureMakeItSioSchema();
+  if (kind === "pack") {
+    const result = await database().query(
+      "DELETE FROM sio_meme_game_packs WHERE id=$1 AND NOT builtin RETURNING id",
+      [id],
+    );
+    if (!result.rowCount)
+      throw new Error("Le pack intégré ne peut pas être supprimé.");
+  } else if (kind === "template")
+    await database().query("DELETE FROM sio_meme_game_templates WHERE id=$1", [
+      id,
+    ]);
+  else
+    await database().query("DELETE FROM sio_meme_game_topics WHERE id=$1", [
+      id,
+    ]);
+  return listMemeStudio();
+}
+
+export async function memeTemplateMedia(id: string) {
+  await ensureMakeItSioSchema();
+  const row = (
+    await database().query(
+      "SELECT media_data,media_type FROM sio_meme_game_templates WHERE id=$1",
+      [id],
+    )
+  ).rows[0];
+  return row?.media_data
+    ? { content: row.media_data as Buffer, mimeType: row.media_type as string }
+    : null;
 }

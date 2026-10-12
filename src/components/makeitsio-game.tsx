@@ -13,6 +13,7 @@ import {
   Laugh,
   LogIn,
   Meh,
+  PackageOpen,
   Play,
   RotateCcw,
   Send,
@@ -84,7 +85,13 @@ function MemeCanvas({
   );
 }
 
-export function MakeItSioGame({ username }: { username: string }) {
+export function MakeItSioGame({
+  username,
+  canManage,
+}: {
+  username: string;
+  canManage: boolean;
+}) {
   const [lobby, setLobby] = useState<MakeItSioLobbyState | null>(null);
   const [name, setName] = useState(username);
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -223,7 +230,13 @@ export function MakeItSioGame({ username }: { username: string }) {
           <b>
             MAKE IT <span>SIO</span>
           </b>
-          <small>MEME PARTY</small>
+          {canManage ? (
+            <Link className="mis-studio-link" href="/sioverse/makeitsio/studio">
+              <PackageOpen size={15} /> Studio
+            </Link>
+          ) : (
+            <small>MEME PARTY</small>
+          )}
         </header>
         <section className="mis-entry">
           <div className="mis-entry-copy">
@@ -375,6 +388,13 @@ export function MakeItSioGame({ username }: { username: string }) {
         )}
       </section>
 
+      {lobby.topic && lobby.phase === "CREATE" && (
+        <div className="mis-topic">
+          <Sparkles size={16} />
+          <span>SUJET DE LA MANCHE</span>
+          <strong>{lobby.topic}</strong>
+        </div>
+      )}
       {lobby.phase === "LOBBY" && (
         <Lobby lobby={lobby} busy={busy} action={action} />
       )}
@@ -416,6 +436,30 @@ function Lobby({
 }) {
   const [rounds, setRounds] = useState(lobby.totalRounds);
   const [seconds, setSeconds] = useState(lobby.captionSeconds);
+  const [mode, setMode] = useState(lobby.mode);
+  const [packIds, setPackIds] = useState(lobby.selectedPackIds);
+  const modes = [
+    {
+      id: "NORMAL",
+      name: "Normal",
+      text: "Un modèle différent pour chaque joueur.",
+    },
+    {
+      id: "TOPICS",
+      name: "Sujets",
+      text: "Un thème commun inspire chaque manche.",
+    },
+    {
+      id: "SAME",
+      name: "Même mème",
+      text: "Même modèle, idées totalement différentes.",
+    },
+    {
+      id: "RELAXED",
+      name: "Détendu",
+      text: "Galerie sans votes, score ni pression.",
+    },
+  ] as const;
   return (
     <div className="mis-lobby-layout">
       <section className="mis-players-panel">
@@ -458,16 +502,42 @@ function Lobby({
             ? "Prépare la partie"
             : "Le chef prépare la partie"}
         </h2>
-        <div className="mis-mode-card">
-          <strong>Mode Normal</strong>
-          <p>
-            Chaque joueur reçoit un modèle différent et crée sa meilleure
-            légende.
-          </p>
-          <small>Les autres modes arrivent au bloc 2</small>
-        </div>
         {lobby.viewer.isHost ? (
           <>
+            <div className="mis-mode-picker">
+              {modes.map((item) => (
+                <button
+                  key={item.id}
+                  className={mode === item.id ? "active" : ""}
+                  onClick={() => setMode(item.id)}
+                >
+                  <strong>{item.name}</strong>
+                  <small>{item.text}</small>
+                </button>
+              ))}
+            </div>
+            <fieldset className="mis-pack-picker">
+              <legend>Packs utilisés</legend>
+              {lobby.availablePacks.map((item) => (
+                <label key={item.id}>
+                  <input
+                    type="checkbox"
+                    checked={packIds.includes(item.id)}
+                    onChange={() =>
+                      setPackIds((current) =>
+                        current.includes(item.id)
+                          ? current.filter((id) => id !== item.id)
+                          : [...current, item.id],
+                      )
+                    }
+                  />
+                  <span>
+                    {item.name}
+                    <small>{item.templateCount} modèles</small>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
             <label>
               Nombre de manches
               <input
@@ -493,13 +563,15 @@ function Lobby({
             </label>
             <button
               className="mis-save"
-              disabled={busy}
+              disabled={busy || !packIds.length}
               onClick={() =>
                 void action({
                   action: "settings",
                   code: lobby.code,
                   totalRounds: rounds,
                   captionSeconds: seconds,
+                  mode,
+                  packIds,
                 })
               }
             >
@@ -507,7 +579,7 @@ function Lobby({
             </button>
             <button
               className="mis-launch"
-              disabled={busy || lobby.members.length < 2}
+              disabled={busy || lobby.members.length < 2 || !packIds.length}
               onClick={() => void action({ action: "start", code: lobby.code })}
             >
               <Play size={19} /> Lancer la partie
@@ -519,13 +591,21 @@ function Lobby({
             </button>
           </>
         ) : (
-          <div className="mis-waiting">
-            <i />
-            <strong>En attente du lancement</strong>
-            <p>
-              {lobby.totalRounds} manches · {lobby.captionSeconds} secondes
-            </p>
-          </div>
+          <>
+            <div className="mis-mode-card">
+              <strong>
+                Mode {modes.find((item) => item.id === lobby.mode)?.name}
+              </strong>
+              <p>{modes.find((item) => item.id === lobby.mode)?.text}</p>
+            </div>
+            <div className="mis-waiting">
+              <i />
+              <strong>En attente du lancement</strong>
+              <p>
+                {lobby.totalRounds} manches · {lobby.captionSeconds} secondes
+              </p>
+            </div>
+          </>
         )}
       </aside>
     </div>
@@ -718,27 +798,39 @@ function Results({
   busy: boolean;
   action: (body: object) => Promise<unknown>;
 }) {
-  const ranked = [...lobby.submissions].sort(
-    (a, b) => (b.score ?? 0) - (a.score ?? 0),
-  );
+  const relaxed = lobby.mode === "RELAXED";
+  const ranked = relaxed
+    ? lobby.submissions
+    : [...lobby.submissions].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   return (
     <section className="mis-results">
       <div className="mis-results-grid">
         {ranked.map((meme, index) => (
-          <article key={meme.id} className={index === 0 ? "winner" : ""}>
-            <span className="mis-rank">#{index + 1}</span>
+          <article
+            key={meme.id}
+            className={!relaxed && index === 0 ? "winner" : ""}
+          >
+            {!relaxed && <span className="mis-rank">#{index + 1}</span>}
             <MemeCanvas meme={meme} />
             <footer>
               <div>
                 <strong>{meme.authorName}</strong>
                 <small>
-                  Vote {meme.baseScore ?? 0} · Buddy +{meme.buddyBonus ?? 0}
+                  {relaxed ? (
+                    "Mode détendu · aucun score"
+                  ) : (
+                    <>
+                      Vote {meme.baseScore ?? 0} · Buddy +{meme.buddyBonus ?? 0}
+                    </>
+                  )}
                 </small>
               </div>
-              <b>
-                {meme.score ?? 0}
-                <small> pts</small>
-              </b>
+              {!relaxed && (
+                <b>
+                  {meme.score ?? 0}
+                  <small> pts</small>
+                </b>
+              )}
             </footer>
           </article>
         ))}
@@ -751,7 +843,8 @@ function Results({
         >
           {lobby.round >= lobby.totalRounds ? (
             <>
-              <Trophy size={19} /> Voir le podium final
+              <Trophy size={19} />{" "}
+              {relaxed ? "Terminer la galerie" : "Voir le podium final"}
             </>
           ) : (
             <>
@@ -778,24 +871,31 @@ function Final({
   action: (body: object) => Promise<unknown>;
 }) {
   const podium = [...lobby.members].sort((a, b) => b.score - a.score);
+  const relaxed = lobby.mode === "RELAXED";
   return (
     <section className="mis-final">
       <Trophy size={54} />
-      <span>CLASSEMENT FINAL</span>
-      <h2>{podium[0]?.name} remporte la partie !</h2>
-      <div className="mis-podium">
-        {podium.map((member, index) => (
-          <article key={member.id} className={`place-${index + 1}`}>
-            <b>#{index + 1}</b>
-            <Avatar name={member.name} src={member.avatar} />
-            <span>
-              <strong>{member.name}</strong>
-              <small>{member.score} points</small>
-            </span>
-            {index === 0 && <Crown size={20} />}
-          </article>
-        ))}
-      </div>
+      <span>{relaxed ? "GALERIE TERMINÉE" : "CLASSEMENT FINAL"}</span>
+      <h2>
+        {relaxed
+          ? "Aucun perdant. Beaucoup de dossiers."
+          : `${podium[0]?.name} remporte la partie !`}
+      </h2>
+      {!relaxed && (
+        <div className="mis-podium">
+          {podium.map((member, index) => (
+            <article key={member.id} className={`place-${index + 1}`}>
+              <b>#{index + 1}</b>
+              <Avatar name={member.name} src={member.avatar} />
+              <span>
+                <strong>{member.name}</strong>
+                <small>{member.score} points</small>
+              </span>
+              {index === 0 && <Crown size={20} />}
+            </article>
+          ))}
+        </div>
+      )}
       {lobby.viewer.isHost ? (
         <button
           disabled={busy}
