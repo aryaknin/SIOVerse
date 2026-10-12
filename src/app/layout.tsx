@@ -8,6 +8,10 @@ export const metadata: Metadata = {
   title: { default: "SIO OS", template: "%s — SIO OS" },
   description: "Le bureau numérique de la communauté SIO.",
   manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }, { url: "/icons/sioverse-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/sioverse-192.png", sizes: "192x192", type: "image/png" }],
+  },
   appleWebApp: { capable: true, title: "SIOVerse", statusBarStyle: "black-translucent" },
 };
 

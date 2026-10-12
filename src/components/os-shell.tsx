@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Grid2X2,
   Image as ImageIcon,
-  Download,
   KeyRound,
   LockKeyhole,
   Maximize2,
@@ -35,6 +34,7 @@ import type { SessionUser } from "@/lib/auth";
 import type { EntCatalog } from "@/lib/ent";
 import { CourseGlance } from "./course-glance";
 import { NotificationCenter } from "./notification-center";
+import { PwaInstallControl } from "./pwa-install-control";
 import { StatusClock } from "./status-clock";
 
 const wallpapers = [
@@ -51,7 +51,6 @@ type WallpaperPreference = { index: number; automatic: boolean; accent?: string;
 type CustomWallpaper = { id: string; name: string; mood: string; file: string };
 type WindowGeometry = { x: number; y: number; width: number; height: number };
 type ContextMenu = { x: number; y: number };
-type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 const preferenceKey = "sio-os-wallpaper-v1";
 const accentChoices = ["#42a5e8", "#8f7be8", "#45bfa5", "#ef9b52", "#e4669b"];
 
@@ -78,7 +77,6 @@ export function OsShell({ children, appWindows, active, user, desktopCourses = [
   const [locked, setLocked] = useState(false);
   const [unlockBusy, setUnlockBusy] = useState(false);
   const [unlockError, setUnlockError] = useState("");
-  const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
   const [ready, setReady] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [passwordError, setPasswordError] = useState("");
@@ -162,12 +160,6 @@ export function OsShell({ children, appWindows, active, user, desktopCourses = [
       try { window.localStorage.setItem(`sio-os-window-v1:${user.id}:${app}`, JSON.stringify(geometry)); } catch { /* La fenêtre reste utilisable sans stockage local. */ }
     }
   }, [geometries, user.id]);
-
-  useEffect(() => {
-    const capture = (event: Event) => { event.preventDefault(); setInstallPrompt(event as InstallPrompt); };
-    window.addEventListener("beforeinstallprompt", capture);
-    return () => window.removeEventListener("beforeinstallprompt", capture);
-  }, []);
 
   useEffect(() => {
     if (!sounds) return;
@@ -284,13 +276,6 @@ export function OsShell({ children, appWindows, active, user, desktopCourses = [
     setSettingsOpen(false);
   }
 
-  async function installApp() {
-    if (!installPrompt) return;
-    await installPrompt.prompt();
-    const choice = await installPrompt.userChoice;
-    if (choice.outcome === "accepted") setInstallPrompt(null);
-  }
-
   async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -379,7 +364,7 @@ export function OsShell({ children, appWindows, active, user, desktopCourses = [
         <p>Choisissez une ambiance animée pour votre bureau.</p>
         <div className="wallpaper-choices">{allWallpapers.map((item, index) => <div key={item.file} className={`wallpaper-choice ${wallpaper === index ? "selected" : ""}`}><button type="button" className="wallpaper-select" onClick={() => { setWallpaper(index); setAutomatic(false); }} aria-pressed={wallpaper === index}><span className="wallpaper-preview" style={{ backgroundImage: `url(${item.file})` }} /><span className="wallpaper-choice-copy"><strong>{item.name}</strong><small>{item.mood}</small></span>{wallpaper === index && <Check size={16} />}</button>{"id" in item && <button type="button" className="wallpaper-delete" aria-label={`Supprimer ${item.name}`} title="Supprimer ce GIF" disabled={wallpaperBusy} onClick={() => removeWallpaper(item)}><Trash2 size={14} /></button>}</div>)}</div>
         <form className="wallpaper-upload" onSubmit={addWallpaper}><strong><Upload size={15} /> Ajouter ton GIF</strong><input name="name" required minLength={2} maxLength={60} placeholder="Nom du fond d’écran" aria-label="Nom du fond d’écran" /><input name="gif" type="file" accept="image/gif,.gif" required aria-label="Fichier GIF" /><button type="submit" disabled={wallpaperBusy}>{wallpaperBusy ? "Import…" : "Importer le GIF"}</button>{wallpaperError && <small role="alert">{wallpaperError}</small>}</form>
-        <section className="os-personalize"><strong><Paintbrush size={15} /> Apparence du système</strong><div className="os-accent-choices">{accentChoices.map((color) => <button type="button" key={color} style={{ backgroundColor: color }} className={accent === color ? "selected" : ""} aria-label={`Utiliser la couleur ${color}`} aria-pressed={accent === color} onClick={() => setAccent(color)} />)}</div><div className="os-choice-row" aria-label="Thème"><button type="button" className={theme === "light" ? "selected" : ""} onClick={() => setTheme("light")}><Sun size={14} /> Clair</button><button type="button" className={theme === "night" ? "selected" : ""} onClick={() => setTheme("night")}><Moon size={14} /> Nuit</button></div><div className="os-choice-row os-icon-sizes" aria-label="Taille des icônes"><button type="button" className={iconSize === "compact" ? "selected" : ""} onClick={() => setIconSize("compact")}>Petites</button><button type="button" className={iconSize === "normal" ? "selected" : ""} onClick={() => setIconSize("normal")}>Normales</button><button type="button" className={iconSize === "large" ? "selected" : ""} onClick={() => setIconSize("large")}>Grandes</button></div><button type="button" className="os-sound-toggle" onClick={() => setSounds((value) => !value)} aria-pressed={sounds}>{sounds ? <Volume2 size={15} /> : <VolumeX size={15} />} Sons de l’interface <i className={sounds ? "on" : ""} /></button>{installPrompt && <button type="button" className="os-install" onClick={() => void installApp()}><Download size={15} /> Installer SIOVerse sur cet appareil</button>}</section>
+        <section className="os-personalize"><strong><Paintbrush size={15} /> Apparence du système</strong><div className="os-accent-choices">{accentChoices.map((color) => <button type="button" key={color} style={{ backgroundColor: color }} className={accent === color ? "selected" : ""} aria-label={`Utiliser la couleur ${color}`} aria-pressed={accent === color} onClick={() => setAccent(color)} />)}</div><div className="os-choice-row" aria-label="Thème"><button type="button" className={theme === "light" ? "selected" : ""} onClick={() => setTheme("light")}><Sun size={14} /> Clair</button><button type="button" className={theme === "night" ? "selected" : ""} onClick={() => setTheme("night")}><Moon size={14} /> Nuit</button></div><div className="os-choice-row os-icon-sizes" aria-label="Taille des icônes"><button type="button" className={iconSize === "compact" ? "selected" : ""} onClick={() => setIconSize("compact")}>Petites</button><button type="button" className={iconSize === "normal" ? "selected" : ""} onClick={() => setIconSize("normal")}>Normales</button><button type="button" className={iconSize === "large" ? "selected" : ""} onClick={() => setIconSize("large")}>Grandes</button></div><button type="button" className="os-sound-toggle" onClick={() => setSounds((value) => !value)} aria-pressed={sounds}>{sounds ? <Volume2 size={15} /> : <VolumeX size={15} />} Sons de l’interface <i className={sounds ? "on" : ""} /></button></section>
         <button className="rotation-toggle" onClick={() => setAutomatic((value) => !value)} aria-pressed={automatic}>{automatic ? <Pause size={17} /> : <Play size={17} />}<span><strong>Rotation automatique</strong><small>{automatic ? "Nouvelle ambiance toutes les 35 secondes" : "Fond d’écran fixe"}</small></span><span className={`toggle-track ${automatic ? "on" : ""}`} /></button>
       </aside>}
 
@@ -387,6 +372,7 @@ export function OsShell({ children, appWindows, active, user, desktopCourses = [
         <div className="start-heading"><span className="start-mark"><Grid2X2 size={20} /></span><div><strong>{user.username}</strong><small>{user.role === "ADMIN" ? "Administrateur" : "Membre de la classe"} · SIO OS</small></div></div>
         <div className="start-apps">{visibleApps.map((app) => <Link key={app.slug} href={`/${app.slug}`} onClick={(event) => { if (appWindows?.[app.slug]) { event.preventDefault(); openWindow(app.slug); } else setStartOpen(false); }}><span className={`start-app-icon ${app.color}`}><app.icon size={19} /></span><span>{app.label}</span><ChevronRight size={15} /></Link>)}</div>
         <button className="start-settings" onClick={() => { setStartOpen(false); setSettingsOpen(true); }}><Settings2 size={17} /> Personnaliser le bureau</button>
+        <PwaInstallControl />
         <button className="start-settings" onClick={() => { setStartOpen(false); setPasswordError(""); passwordDialog.current?.showModal(); }}><KeyRound size={17} /> Modifier mon mot de passe</button>
         <button className="start-settings" onClick={lockSession}><LockKeyhole size={17} /> Verrouiller la session</button>
         <button className="start-settings" onClick={logout}><LogOut size={17} /> Se déconnecter</button>
