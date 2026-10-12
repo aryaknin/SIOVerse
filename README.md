@@ -72,10 +72,10 @@ Le portail communautaire est organisé en quatre univers :
 
 - **Lore** : articles, archives et histoires de la promotion ;
 - **Mèmes** : images ou GIF, réactions, favoris et commentaires ;
-- **Undercover** : univers prévu pour un jeu social ;
-- **MakeItSIO** : univers prévu pour des créations et votes en groupe.
+- **Undercover** : jeu social en salons privés avec rôles, indices et votes ;
+- **MakeItSIO** : jeu multijoueur de création et de vote de mèmes.
 
-Lore et Mèmes sont fonctionnels. Undercover et MakeItSIO disposent actuellement de leur page d’accueil, mais leurs mécaniques restent à développer.
+Les quatre univers sont fonctionnels. MakeItSIO propose actuellement son mode Normal : salons privés, création chronométrée, votes, Meme Buddy, résultats par manche et podium final.
 
 ## Fonctionnement général
 
@@ -236,6 +236,6 @@ Chaque `push` sur `main` déclenche le workflow GitHub Actions **Qualité et dé
 
 ## État du projet
 
-SIO OS, l’authentification, l’administration, l’agenda, les ressources, les contrôles, Lore et Mèmes sont utilisables. Undercover et MakeItSIO sont encore des espaces en préparation.
+SIO OS, l’authentification, l’administration, l’agenda, les ressources, les contrôles et les quatre univers communautaires sont utilisables. Les modes supplémentaires et les packs personnalisés de MakeItSIO constituent la prochaine extension du jeu.
 
 Le projet est destiné à une communauté privée. Le dépôt public expose le code source, mais jamais les données de production, les fichiers envoyés, les mots de passe, les sessions ou les URL iCal.
