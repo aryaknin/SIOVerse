@@ -277,6 +277,20 @@ Le déploiement ne démarre que si les étapes suivantes réussissent :
 
 Le job de production ouvre ensuite une connexion SSH avec une clé dédiée et restreinte. Le script [`deploy/deploy.sh`](./deploy/deploy.sh), installé en lecture seule dans `/usr/local/sbin/deploy-sioverse`, effectue une sauvegarde PostgreSQL, avance le clone avec un fast-forward, compile, redémarre uniquement SIOVerse et contrôle SIOVerse ainsi que le BDE.
 
+Le script restaure automatiquement `next-env.d.ts` avant la mise à jour et après la compilation, car Next.js peut régénérer ce fichier suivi sans qu’il s’agisse d’une modification applicative. Toute autre modification suivie présente directement sur le VPS bloque volontairement le déploiement afin de ne pas écraser du code ou une configuration par accident.
+
+Après une évolution de `deploy/deploy.sh`, mettez à jour sa copie protégée sur le VPS :
+
+```bash
+sudo install -o root -g root -m 0755 /srv/sioverse/app/deploy/deploy.sh /usr/local/sbin/deploy-sioverse
+```
+
+Si un ancien déploiement est déjà bloqué uniquement par `next-env.d.ts`, restaurez-le une fois avant de relancer le job GitHub Actions :
+
+```bash
+sudo -u sioverse git -C /srv/sioverse/app restore --source=HEAD --worktree -- next-env.d.ts
+```
+
 La synchronisation du schéma n’est volontairement pas automatique. Toute évolution de structure doit faire l’objet d’une migration SQL relue, sauvegardée puis exécutée séparément.
 
 Les secrets GitHub requis dans **Settings → Secrets and variables → Actions** sont :
