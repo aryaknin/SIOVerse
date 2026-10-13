@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, Sparkles } from "lucide-react";
 import { universes } from "@/lib/universes";
 import { requireUser } from "@/lib/auth";
-import { listLoreEntries } from "@/lib/lore";
+import { listLoreEntries, listWikiImages } from "@/lib/lore";
 import { LoreBoard } from "@/components/lore-board";
 import {
   ensureMemesSchema,
@@ -27,12 +27,13 @@ export default async function UniversePage({
 
   if (universe === "lore") {
     await ensureMemesSchema();
-    const [entries, links, memes, people, concerned] = await Promise.all([
+    const [entries, links, memes, people, concerned, images] = await Promise.all([
       listLoreEntries(),
       listArticleMemeLinks(),
       listMemes(),
       listPeopleOptions(),
       listContentPeople(),
+      listWikiImages(),
     ]);
     return (
       <main className="verse-shell universe-screen lore">
@@ -53,6 +54,7 @@ export default async function UniversePage({
           initialLinks={links}
           initialConcerned={concerned}
           initialPeople={people}
+          initialImages={images}
           memes={memes}
           canManage={user.role === "ADMIN"}
         />
@@ -63,7 +65,7 @@ export default async function UniversePage({
   if (universe === "memes") {
     const [memes, people] = await Promise.all([
       listMemes(user.id),
-      user.role === "ADMIN" ? listPeopleOptions() : Promise.resolve([]),
+      listPeopleOptions(),
     ]);
     return (
       <main className="verse-shell universe-screen memes">

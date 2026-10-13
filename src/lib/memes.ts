@@ -123,14 +123,13 @@ export async function listArticleMemeLinks(): Promise<Record<string, string[]>> 
   return links;
 }
 
-export async function createMeme(input: { title: string; body: string; media: Buffer; mediaType: string; personKeys: string[] }): Promise<void> {
+export async function createMeme(input: { title: string; body: string; media: Buffer; mediaType: string; personKeys: string[]; authorId: string }): Promise<void> {
   await ensureMemesSchema();
   const client = await loreDatabase().connect();
   try {
     await client.query("BEGIN");
     const id = randomUUID();
-    const firstStudent = input.personKeys.find((key) => key.startsWith("user:"));
-    await client.query("INSERT INTO sio_lore_entries(id,kind,title,body,gif_data,author_id,media_type) VALUES($1,'GIF',$2,$3,$4,$5,$6)", [id, input.title, input.body, input.media, firstStudent?.slice(5) ?? null, input.mediaType]);
+    await client.query("INSERT INTO sio_lore_entries(id,kind,title,body,gif_data,author_id,media_type) SELECT $1,'GIF',$2,$3,$4,id,$5 FROM sio_users WHERE id=$6", [id, input.title, input.body, input.media, input.mediaType, input.authorId]);
     await linkContentPeople(client, id, input.personKeys);
     await client.query("COMMIT");
   } catch (error) { await client.query("ROLLBACK"); throw error; }

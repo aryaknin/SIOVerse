@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, BookOpenText, Check, Clock3, Eye, FilePlus2, Flag, History, Link2, List, Pencil, Plus, RotateCcw, ShieldAlert, Trash2, UserRound, X } from "lucide-react";
-import type { LoreEntry, LoreSection } from "@/lib/lore";
+import { ArrowDown, ArrowUp, BookOpenText, Check, Clock3, Eye, FilePlus2, Flag, History, ImagePlus, Link2, List, Pencil, Plus, RotateCcw, ShieldAlert, Trash2, UserRound, X } from "lucide-react";
+import type { LoreEntry, LoreSection, WikiImage } from "@/lib/lore";
 import type { MemeEntry } from "@/lib/memes";
 import type { PersonOption } from "@/lib/people";
 import type { WikiReport } from "@/lib/wiki-reports";
@@ -48,7 +48,7 @@ function WikiEditor({ title, body, category, articles, label, onSave, onCancel, 
   </form>;
 }
 
-export function LoreBoard({ initialEntries, initialLinks, initialConcerned, initialPeople, memes, canManage }: { initialEntries: LoreEntry[]; initialLinks: Record<string, string[]>; initialConcerned: Record<string, PersonOption[]>; initialPeople: PersonOption[]; memes: MemeEntry[]; canManage: boolean }) {
+export function LoreBoard({ initialEntries, initialLinks, initialConcerned, initialPeople, initialImages, memes, canManage }: { initialEntries: LoreEntry[]; initialLinks: Record<string, string[]>; initialConcerned: Record<string, PersonOption[]>; initialPeople: PersonOption[]; initialImages: Record<string, WikiImage[]>; memes: MemeEntry[]; canManage: boolean }) {
   const [entries, setEntries] = useState(initialEntries);
   const [links, setLinks] = useState(initialLinks);
   const [concerned, setConcerned] = useState(initialConcerned);
@@ -62,6 +62,8 @@ export function LoreBoard({ initialEntries, initialLinks, initialConcerned, init
   const [peopleEditor, setPeopleEditor] = useState(false);
   const [mediaEditor, setMediaEditor] = useState(false);
   const [selectedMemes, setSelectedMemes] = useState<string[]>([]);
+  const [images, setImages] = useState(initialImages);
+  const [imageEditor, setImageEditor] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
@@ -79,7 +81,7 @@ export function LoreBoard({ initialEntries, initialLinks, initialConcerned, init
       const category = params.get("category");
       setSelectedId(id && entries.some((item) => item.id === id) ? id : null);
       setSelectedCategory(!id && category && wikiCategoryGroups.some((group) => group.categories.some((item) => item.id === category)) ? category : null);
-      setEditor(null); setShowHistory(false); setPeopleEditor(false); setMediaEditor(false);
+      setEditor(null); setShowHistory(false); setPeopleEditor(false); setMediaEditor(false); setImageEditor(false);
     }
     syncFromUrl();
     window.addEventListener("popstate", syncFromUrl);
@@ -87,7 +89,7 @@ export function LoreBoard({ initialEntries, initialLinks, initialConcerned, init
   }, [entries]);
 
   function selectArticle(id: string) {
-    setSelectedId(id); setSelectedCategory(null); setAdding(false); setEditor(null); setPeopleEditor(false); setMediaEditor(false); setShowHistory(false); setShowReports(false); setReporting(false); setReportNotice(""); setError(""); setCopied(false);
+    setSelectedId(id); setSelectedCategory(null); setAdding(false); setEditor(null); setPeopleEditor(false); setMediaEditor(false); setImageEditor(false); setShowHistory(false); setShowReports(false); setReporting(false); setReportNotice(""); setError(""); setCopied(false);
     const url = new URL(window.location.href);
     url.searchParams.set("article", id);
     url.searchParams.delete("category");
@@ -143,6 +145,30 @@ export function LoreBoard({ initialEntries, initialLinks, initialConcerned, init
       if (!response.ok) throw new Error(result.error ?? "Modification impossible.");
       setEntries(result.entries as LoreEntry[]); setLinks(result.links as Record<string, string[]>); setEditor(null); setMediaEditor(false);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Modification impossible."); }
+    finally { setBusy(false); }
+  }
+  async function uploadImage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!entry) return;
+    setBusy(true); setError("");
+    const form = event.currentTarget;
+    const data = new FormData(form); data.set("articleId", entry.id);
+    try {
+      const response = await fetch("/api/lore/images", { method: "POST", body: data });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Import impossible.");
+      setImages(result.images as Record<string, WikiImage[]>); form.reset(); setImageEditor(false);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Import impossible."); }
+    finally { setBusy(false); }
+  }
+  async function deleteImage(image: WikiImage) {
+    if (!entry || !window.confirm(`Supprimer l’image « ${image.caption || image.fileName} » ?`)) return;
+    setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/lore/images", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ articleId: entry.id, imageId: image.id }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Suppression impossible.");
+      setImages(result.images as Record<string, WikiImage[]>);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Suppression impossible."); }
     finally { setBusy(false); }
   }
   async function deleteSection(section: LoreSection) {
@@ -202,6 +228,8 @@ export function LoreBoard({ initialEntries, initialLinks, initialConcerned, init
           {reporting && <form className="wiki-report-form" onSubmit={submitReport}><label>Quel est le problème avec cet article ?<textarea value={reportReason} onChange={(event) => setReportReason(event.target.value)} minLength={10} maxLength={500} rows={3} required placeholder="Décris ce qui doit être vérifié par un administrateur…" /></label><button type="submit" disabled={busy || reportReason.trim().length < 10}>Envoyer le signalement</button></form>}
           {showHistory ? <section className="wiki-history"><h3>Historique des modifications</h3><p>Les contributions sont visibles par tous les membres de la classe. Les administrateurs peuvent restaurer l’état avant une modification récente.</p><ol>{entry.revisions.map((revision) => <li key={revision.id}><span className="wiki-history-dot" /><div><strong>{revision.detail}</strong><small>{revision.editorName ?? "Ancien membre"} · {dateLabel(revision.createdAt)}</small>{canManage && revision.canRestore && <button type="button" className="wiki-restore" disabled={busy} onClick={() => { if (window.confirm("Restaurer la version avant cette modification ? La version actuelle restera restaurable dans l’historique.")) void edit({ action: "restore", articleId: entry.id, revisionId: revision.id }); }}><RotateCcw size={13} /> Restaurer l’état précédent</button>}</div></li>)}</ol></section> : <div className="wiki-article-layout"><div className="wiki-article-content">
             <section className="wiki-intro" id="introduction">{editor?.kind === "intro" ? <WikiEditor title={entry.title} body={entry.body} category={entry.category} articles={entries} label="Modifier la page" busy={busy} onCancel={() => setEditor(null)} onSave={(title, body, category) => edit({ action: "article", articleId: entry.id, title, body, category, expectedUpdatedAt: entry.updatedAt })} /> : <WikiRichText text={entry.body} articles={entries} currentId={entry.id} onNavigate={selectArticle} onCreate={startArticle} />}</section>
+            {(images[entry.id] ?? []).length > 0 && <div className="wiki-uploaded-gallery">{(images[entry.id] ?? []).map((image) => <figure className="wiki-figure wiki-uploaded-image" key={image.id}><Image src={`/api/lore/images/${image.id}`} alt={image.caption || image.fileName} width={960} height={640} unoptimized /><figcaption><span>{image.caption || image.fileName}{image.uploaderName && <small>Ajoutée par {image.uploaderName}</small>}</span><button type="button" title="Supprimer cette image" disabled={busy} onClick={() => void deleteImage(image)}><Trash2 size={14} /></button></figcaption></figure>)}</div>}
+            <div className="wiki-image-import">{!imageEditor ? <button type="button" onClick={() => { setImageEditor(true); setError(""); }}><ImagePlus size={14} /> Importer une image depuis l’ordinateur</button> : <form onSubmit={uploadImage}><div><strong><ImagePlus size={15} /> Ajouter une illustration</strong><button type="button" onClick={() => setImageEditor(false)} aria-label="Fermer"><X size={15} /></button></div><label>Image <small>GIF, PNG, JPEG ou WebP · 10 Mo maximum</small><input name="image" type="file" required accept="image/gif,image/png,image/jpeg,image/webp,.gif,.png,.jpg,.jpeg,.webp" /></label><label>Légende <small>facultative</small><input name="caption" maxLength={240} placeholder="Décris l’image ou indique sa source…" /></label><div className="wiki-media-actions"><button type="button" onClick={() => setImageEditor(false)}>Annuler</button><button type="submit" disabled={busy || (images[entry.id]?.length ?? 0) >= 12}>{busy ? "Import…" : "Ajouter à l’article"}</button></div></form>}</div>
             {(links[entry.id] ?? []).map((memeId) => { const meme = memes.find((item) => item.id === memeId); return meme ? <figure className="wiki-figure" key={memeId}><Image src={`/api/memes/gif/${meme.id}`} alt={meme.title} width={720} height={405} unoptimized /><figcaption>{meme.title} · {meme.people.join(", ")}</figcaption></figure> : null; })}
             {memes.length > 0 && <div className="wiki-media-manage">{!mediaEditor ? <button type="button" onClick={() => { setSelectedMemes(links[entry.id] ?? []); setMediaEditor(true); }}><Pencil size={13} /> Gérer les illustrations</button> : <div className="wiki-media-editor"><div><strong>Illustrations de l’article</strong><button type="button" onClick={() => setMediaEditor(false)} aria-label="Fermer"><X size={15} /></button></div><p>Sélectionne jusqu’à 8 contenus de la page Mèmes.</p><div className="wiki-media-options">{memes.map((meme) => <label key={meme.id}><input type="checkbox" checked={selectedMemes.includes(meme.id)} disabled={!selectedMemes.includes(meme.id) && selectedMemes.length >= 8} onChange={() => setSelectedMemes((items) => items.includes(meme.id) ? items.filter((id) => id !== meme.id) : [...items, meme.id])} /><span>{meme.title}</span></label>)}</div><div className="wiki-media-actions"><button type="button" onClick={() => setMediaEditor(false)}>Annuler</button><button type="button" disabled={busy} onClick={() => edit({ action: "media", articleId: entry.id, memeIds: selectedMemes })}>{busy ? "Enregistrement…" : "Enregistrer les illustrations"}</button></div></div>}</div>}
             {entry.sections.map((section, index) => <section className="wiki-section" id={`section-${section.id}`} key={section.id}><div className="wiki-section-head"><h3><span>{index + 1}.</span> {section.title}</h3><div className="wiki-section-actions"><button type="button" title="Modifier la section" onClick={() => { setEditor({ kind: "section", id: section.id }); setError(""); }}><Pencil size={14} /><span>Modifier</span></button><button type="button" title="Monter la section" disabled={index === 0 || busy} onClick={() => moveSection(index, -1)}><ArrowUp size={15} /></button><button type="button" title="Descendre la section" disabled={index === entry.sections.length - 1 || busy} onClick={() => moveSection(index, 1)}><ArrowDown size={15} /></button><button type="button" title="Supprimer la section" onClick={() => deleteSection(section)}><Trash2 size={15} /></button></div></div>{editor?.kind === "section" && editor.id === section.id ? <WikiEditor key={section.id} title={section.title} body={section.body} articles={entries} label={`Modifier « ${section.title} »`} busy={busy} onCancel={() => setEditor(null)} onSave={(title, body) => edit({ action: "section-edit", articleId: entry.id, sectionId: section.id, title, body, expectedUpdatedAt: section.updatedAt })} /> : <WikiRichText text={section.body} articles={entries} currentId={entry.id} onNavigate={selectArticle} onCreate={startArticle} />}{section.editorName && <div className="wiki-section-credit">Dernière modification par {section.editorName} · {dateLabel(section.updatedAt)}</div>}</section>)}

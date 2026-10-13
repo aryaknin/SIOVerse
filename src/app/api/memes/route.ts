@@ -18,7 +18,7 @@ export async function GET() {
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return Response.json({ error: "Origine de requête refusée." }, { status: 403 });
   const user = await getCurrentUser();
-  if (user?.role !== "ADMIN") return Response.json({ error: "Accès administrateur requis." }, { status: 403 });
+  if (!user) return Response.json({ error: "Connexion requise." }, { status: 401 });
   try {
     const form = await request.formData();
     const parsed = schema.safeParse({ title: form.get("title"), body: form.get("body"), personKeys: form.getAll("personKeys") });
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       : bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff ? "image/jpeg"
       : bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP" ? "image/webp" : null;
     if (!mimeType) return Response.json({ error: "Format non reconnu. Utilise GIF, PNG, JPEG ou WebP." }, { status: 400 });
-    await createMeme({ ...parsed.data, media: bytes, mediaType: mimeType });
+    await createMeme({ ...parsed.data, media: bytes, mediaType: mimeType, authorId: user.id });
     return Response.json({ memes: await listMemes(user.id) }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Publication impossible." }, { status: 400 }); }
 }

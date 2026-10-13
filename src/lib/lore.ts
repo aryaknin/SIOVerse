@@ -10,6 +10,7 @@ import type { WikiCategoryId } from "./wiki-categories";
 export type LoreSection = { id: string; title: string; body: string; position: number; updatedAt: string; editorName: string | null };
 export type LoreRevision = { id: string; action: string; detail: string; editorName: string | null; createdAt: string; canRestore: boolean };
 export type LoreEntry = { id: string; kind: "ARTICLE"; title: string; body: string; category: WikiCategoryId; authorId: string | null; authorName: string | null; createdAt: string; updatedAt: string; sections: LoreSection[]; revisions: LoreRevision[] };
+export type WikiImage = { id: string; articleId: string; caption: string; fileName: string; mediaType: string; uploaderName: string | null; createdAt: string };
 
 let wikiSchemaReady: Promise<void> | null = null;
 
@@ -40,8 +41,67 @@ export async function ensureWikiSchema() {
       );
       CREATE INDEX IF NOT EXISTS sio_lore_revisions_article_idx ON sio_lore_revisions(article_id,created_at DESC);`);
     await loreDatabase().query("ALTER TABLE sio_lore_revisions ADD COLUMN IF NOT EXISTS snapshot jsonb");
+    await loreDatabase().query(`CREATE TABLE IF NOT EXISTS sio_wiki_images (
+      id uuid PRIMARY KEY,
+      article_id uuid NOT NULL REFERENCES sio_lore_entries(id) ON DELETE CASCADE,
+      uploader_id uuid REFERENCES sio_users(id) ON DELETE SET NULL,
+      file_name text NOT NULL,
+      caption text NOT NULL DEFAULT '',
+      media_type text NOT NULL CHECK (media_type IN ('image/gif','image/png','image/jpeg','image/webp')),
+      image_data bytea NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS sio_wiki_images_article_idx ON sio_wiki_images(article_id,created_at,id);`);
   })().catch((error) => { wikiSchemaReady = null; throw error; });
   await wikiSchemaReady;
+}
+
+export async function listWikiImages(): Promise<Record<string, WikiImage[]>> {
+  await ensureWikiSchema();
+  const result = await loreDatabase().query(`SELECT i.id,i.article_id,i.file_name,i.caption,i.media_type,i.created_at,u.username AS uploader_name
+    FROM sio_wiki_images i JOIN sio_lore_entries e ON e.id=i.article_id AND e.kind='ARTICLE'
+    LEFT JOIN sio_users u ON u.id=i.uploader_id ORDER BY i.article_id,i.created_at,i.id`);
+  const images: Record<string, WikiImage[]> = {};
+  for (const row of result.rows) (images[row.article_id] ??= []).push({ id: row.id, articleId: row.article_id, caption: row.caption, fileName: row.file_name, mediaType: row.media_type, uploaderName: row.uploader_name, createdAt: row.created_at.toISOString() });
+  return images;
+}
+
+export async function addWikiImage(input: { articleId: string; uploaderId: string; fileName: string; caption: string; mediaType: string; content: Buffer }): Promise<void> {
+  await ensureWikiSchema();
+  const client = await loreDatabase().connect();
+  try {
+    await client.query("BEGIN");
+    const article = await client.query("SELECT title FROM sio_lore_entries WHERE id=$1 AND kind='ARTICLE' FOR UPDATE", [input.articleId]);
+    if (!article.rowCount) throw new Error("Article introuvable.");
+    const count = await client.query("SELECT count(*)::integer AS total FROM sio_wiki_images WHERE article_id=$1", [input.articleId]);
+    if (count.rows[0].total >= 12) throw new Error("Cet article a atteint la limite de 12 images importées.");
+    await client.query("INSERT INTO sio_wiki_images(id,article_id,uploader_id,file_name,caption,media_type,image_data) VALUES($1,$2,$3,$4,$5,$6,$7)", [randomUUID(), input.articleId, input.uploaderId, input.fileName, input.caption, input.mediaType, input.content]);
+    await client.query("UPDATE sio_lore_entries SET updated_at=now() WHERE id=$1", [input.articleId]);
+    await client.query("INSERT INTO sio_lore_revisions(id,article_id,editor_id,action,detail) VALUES($1,$2,$3,'IMAGE_ADD',$4)", [randomUUID(), input.articleId, input.uploaderId, `Image « ${input.caption || input.fileName} » ajoutée`]);
+    await client.query("COMMIT");
+  } catch (error) { await client.query("ROLLBACK"); throw error; }
+  finally { client.release(); }
+}
+
+export async function deleteWikiImage(imageId: string, articleId: string, editorId: string): Promise<void> {
+  await ensureWikiSchema();
+  const client = await loreDatabase().connect();
+  try {
+    await client.query("BEGIN");
+    const removed = await client.query("DELETE FROM sio_wiki_images WHERE id=$1 AND article_id=$2 RETURNING caption,file_name", [imageId, articleId]);
+    if (!removed.rowCount) throw new Error("Image introuvable.");
+    await client.query("UPDATE sio_lore_entries SET updated_at=now() WHERE id=$1", [articleId]);
+    await client.query("INSERT INTO sio_lore_revisions(id,article_id,editor_id,action,detail) VALUES($1,$2,$3,'IMAGE_DELETE',$4)", [randomUUID(), articleId, editorId, `Image « ${removed.rows[0].caption || removed.rows[0].file_name} » supprimée`]);
+    await client.query("COMMIT");
+  } catch (error) { await client.query("ROLLBACK"); throw error; }
+  finally { client.release(); }
+}
+
+export async function wikiImageMedia(id: string): Promise<{ content: Buffer; mimeType: string } | null> {
+  await ensureWikiSchema();
+  const result = await loreDatabase().query("SELECT image_data,media_type FROM sio_wiki_images WHERE id=$1", [id]);
+  const row = result.rows[0];
+  return row?.image_data ? { content: row.image_data, mimeType: row.media_type } : null;
 }
 
 export async function listLoreEntries(): Promise<LoreEntry[]> {
