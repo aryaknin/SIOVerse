@@ -9,7 +9,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!user) return new Response(null, { status: 401 });
   const { id } = await params;
   if (!z.uuid().safeParse(id).success) return new Response(null, { status: 400 });
-  const gif = await getCustomWallpaper(user.id, id);
-  if (!gif) return new Response(null, { status: 404 });
-  return new Response(new Uint8Array(gif), { headers: { "Content-Type": "image/gif", "Content-Disposition": "inline", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300" } });
+  const wallpaper = await getCustomWallpaper(user.id, id);
+  if (!wallpaper) return new Response(null, { status: 404 });
+  return new Response(new Uint8Array(wallpaper.content), { headers: { "Content-Type": wallpaper.mediaType, "Content-Disposition": "inline", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300" } });
 }

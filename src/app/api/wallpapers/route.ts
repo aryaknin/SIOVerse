@@ -18,12 +18,16 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: "Connexion requise." }, { status: 401 });
   try {
     const form = await request.formData();
-    const file = form.get("gif");
+    const file = form.get("wallpaper") ?? form.get("gif");
     const name = z.string().trim().min(2).max(60).safeParse(form.get("name"));
-    if (!name.success || !(file instanceof File) || file.size < 6 || file.size > 10 * 1024 * 1024) return Response.json({ error: "Donne un nom et choisis un GIF de 10 Mo maximum." }, { status: 400 });
+    if (!name.success || !(file instanceof File) || file.size < 8 || file.size > 10 * 1024 * 1024) return Response.json({ error: "Donne un nom et choisis une image ou un GIF de 10 Mo maximum." }, { status: 400 });
     const bytes = Buffer.from(await file.arrayBuffer());
-    if (!["GIF87a", "GIF89a"].includes(bytes.toString("ascii", 0, 6))) return Response.json({ error: "Ce fichier n’est pas un GIF valide." }, { status: 400 });
-    const wallpaper = await addCustomWallpaper(user.id, name.data, bytes);
+    const mediaType = ["GIF87a", "GIF89a"].includes(bytes.toString("ascii", 0, 6)) ? "image/gif"
+      : bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ? "image/png"
+      : bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff ? "image/jpeg"
+      : bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP" ? "image/webp" : null;
+    if (!mediaType) return Response.json({ error: "Format non reconnu. Utilise GIF, PNG, JPEG ou WebP." }, { status: 400 });
+    const wallpaper = await addCustomWallpaper(user.id, name.data, bytes, mediaType);
     return Response.json({ wallpaper }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Import impossible." }, { status: 400 }); }
 }
